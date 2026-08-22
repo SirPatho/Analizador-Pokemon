@@ -160,9 +160,9 @@
     </div>
 
     <script>
-        // CONFIGURACIÓN SUPABASE
-        const supaUrl = 'https://moivphwdfvzjphlblaup.supabase.co';
-        const supaKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vaXZwaHdkZnZ6anBobGJsYXVwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNzIxMDMsImV4cCI6MjEwMDk0ODEwM30.dd_M-p9UpIn0cHF7210GNKrG396nhfA5K_W3Hx_oxoQ';
+        // CONFIGURACIÓN SUPABASE - ¡NUEVA API KEY Y URL!
+        const supaUrl = 'https://vuyahvixiwrjorzplsou.supabase.co';
+        const supaKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1eWFodml4aXdyam9yenBsc291Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczNjUyMDcsImV4cCI6MjEwMjk0MTIwN30.rw-3rRT4VDhP_TWDn3F_89ncwCppIVmfTNHcoHAgV78';
         const client = supabase.createClient(supaUrl, supaKey);
 
         // =======================================================
@@ -212,9 +212,10 @@
                 ed: document.getElementById('episodio-delta').innerHTML, inv: document.getElementById('tbody-inventario').innerHTML,
                 pres: document.getElementById('tbody-prestamos').innerHTML, pkm: document.getElementById('tbody-pokemons').innerHTML
             };
-            const { error } = await client.from('vortice_data').update({ datos_json: JSON.stringify(estadoUI) }).eq('id', 1);
+            const { error } = await client.from('vortice_data').upsert({ id: 1, datos_json: JSON.stringify(estadoUI) });
             isSaving = false;
             if(!error) { document.getElementById('save-status').innerText = "Sincronizado y seguro"; document.getElementById('save-icon').innerText = "🟢"; }
+            else { document.getElementById('save-status').innerText = "Error al guardar"; document.getElementById('save-icon').innerText = "🔴"; console.error(error); }
         }
 
         // =======================================================
@@ -251,7 +252,8 @@
         }
 
         async function cargarDeLaNubeInicial() {
-            const { data } = await client.from('vortice_data').select('datos_json').eq('id', 1).single();
+            const { data, error } = await client.from('vortice_data').select('datos_json').eq('id', 1).maybeSingle();
+            
             if(data && data.datos_json && data.datos_json !== "{}") {
                 aplicarHtml(data.datos_json);
             }
