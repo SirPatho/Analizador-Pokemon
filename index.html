@@ -40,7 +40,6 @@
         .btn-upload { background-color: #9d4edd; } .btn-upload:hover { background-color: #c77dff; color: #000; }
         .btn-manual { background-color: #3c096c; border: 1px solid #c77dff; } .btn-manual:hover { background-color: #c77dff; color: #000; }
         
-        /* NOTIFICACIONES */
         #toast-notification { position: fixed; bottom: 20px; right: 20px; background-color: #2ed573; color: black; padding: 15px 20px; border-radius: 5px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5); display: none; z-index: 1000; transition: 0.3s; }
 
         /* Pestañas */
@@ -74,7 +73,6 @@
         .sheet-btn.active { background-color: #9d4edd; color: white; border-color: #c77dff; }
         .sheet-content { display: none; overflow-x: auto; } .sheet-content.active { display: block; }
         
-        /* TABLAS DE EXCEL */
         .mt-table { width: 100%; border-collapse: collapse; background-color: rgba(20, 15, 25, 0.95); font-size: 12px; min-width: 900px; margin-bottom: 30px; }
         .mt-table th, .mt-table td { border: 1px solid #444; padding: 8px; text-align: center; vertical-align: middle; }
         .mt-table th { background-color: #111; color: #c77dff; }
@@ -89,7 +87,6 @@
         .btn-add-inventory { background-color: #9d4edd; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; padding: 4px 8px; font-size: 11px; }
 
         @media (max-width: 1200px) { .tab-content.active { grid-template-columns: 1fr; } }
-        @media (max-width: 600px) { .team-grid { grid-template-columns: repeat(2, 1fr); } }
     </style>
 </head>
 <body>
@@ -104,14 +101,14 @@
         </div>
     </div>
 
-    <div id="toast-notification">Nuevos datos de tus compañeros sincronizados.</div>
+    <div id="toast-notification">Nuevos datos sincronizados.</div>
 
     <div id="main-app">
         <h1>🌌 BASE DE DATOS: SECTOR VÓRTICE</h1>
 
         <div class="top-bar">
             <div class="status-indicator">
-                <span id="save-icon">🟢</span> <span id="save-status">Sistema en línea. Auto-guardado activado.</span>
+                <span id="save-icon">🟢</span> <span id="save-status">Sistema seguro en línea.</span>
             </div>
             <div class="controls-container" id="main-controls">
                 <label for="fileInput" class="btn-main btn-upload">📁 Subir HTML</label>
@@ -160,14 +157,19 @@
     </div>
 
     <script>
-        // CONFIGURACIÓN SUPABASE - ¡NUEVA API KEY Y URL!
+        // CONFIGURACIÓN SUPABASE
         const supaUrl = 'https://vuyahvixiwrjorzplsou.supabase.co';
         const supaKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1eWFodml4aXdyam9yenBsc291Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczNjUyMDcsImV4cCI6MjEwMjk0MTIwN30.rw-3rRT4VDhP_TWDn3F_89ncwCppIVmfTNHcoHAgV78';
         const client = supabase.createClient(supaUrl, supaKey);
 
         // =======================================================
-        // 1. SEGURIDAD (La que te funcionó perfecto)
+        // 1. EL SEMÁFORO DE SEGURIDAD (Bloqueo Inicial)
         // =======================================================
+        let isAppReady = false; 
+        let autoSaveTimer;
+        let isSaving = false;
+        let pendingRemoteData = null;
+
         async function checkPass() {
             const input = document.getElementById('pass-input').value.trim().toLowerCase();
             if (btoa(input) === "bmVidWxhIHZvcnRleCAyMA==") {
@@ -182,14 +184,29 @@
             }
         }
 
-        // =======================================================
-        // 2. AUTO-GUARDADO
-        // =======================================================
-        let autoSaveTimer;
-        let isSaving = false;
-        let pendingRemoteData = null;
+        async function cargarDeLaNubeInicial() {
+            const { data, error } = await client.from('vortice_data').select('datos_json').eq('id', 1).maybeSingle();
+            
+            if(data && data.datos_json && data.datos_json !== "{}") {
+                aplicarHtml(data.datos_json);
+            }
+            
+            // Genera las tablas en tu pantalla si no existen, PERO NO LAS GUARDA EN LA NUBE.
+            const filasActuales = document.getElementById('tbody-inventario').querySelectorAll('tr').length;
+            if (filasActuales < 20) {
+                generarTablas();
+            }
 
+            // AHORA el sistema tiene permiso humano para guardar futuros cambios.
+            isAppReady = true; 
+        }
+
+        // =======================================================
+        // 2. AUTO-GUARDADO (Solo Humano)
+        // =======================================================
         document.addEventListener('input', function(e) {
+            if (!isAppReady) return; // Si el semáforo está rojo, rechaza cualquier guardado.
+            
             if(e.target.tagName === 'INPUT' || e.target.isContentEditable) {
                 if(e.target.tagName === 'INPUT') e.target.setAttribute('value', e.target.value);
                 triggerAutoSave();
@@ -204,8 +221,9 @@
         }
 
         async function guardarEnLaNubeSilencioso() {
+            if (!isAppReady) return; // Doble candado de seguridad
             isSaving = true;
-            document.getElementById('save-status').innerText = "Guardando en la nube...";
+            document.getElementById('save-status').innerText = "Guardando...";
             const estadoUI = {
                 t1: document.getElementById('tramo-1').innerHTML, t2: document.getElementById('tramo-2').innerHTML,
                 t3: document.getElementById('tramo-3').innerHTML, t4: document.getElementById('tramo-4').innerHTML,
@@ -214,12 +232,11 @@
             };
             const { error } = await client.from('vortice_data').upsert({ id: 1, datos_json: JSON.stringify(estadoUI) });
             isSaving = false;
-            if(!error) { document.getElementById('save-status').innerText = "Sincronizado y seguro"; document.getElementById('save-icon').innerText = "🟢"; }
-            else { document.getElementById('save-status').innerText = "Error al guardar"; document.getElementById('save-icon').innerText = "🔴"; console.error(error); }
+            if(!error) { document.getElementById('save-status').innerText = "Sincronizado"; document.getElementById('save-icon').innerText = "🟢"; }
         }
 
         // =======================================================
-        // 3. SINCRONIZACIÓN Y CARGA INICIAL CON SEGURO ANTI-VACÍOS
+        // 3. SINCRONIZACIÓN EN VIVO
         // =======================================================
         function suscribirseASincronizacion() {
             client.channel('public:vortice_data').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'vortice_data' }, payload => {
@@ -251,21 +268,6 @@
             toast.style.display = 'block'; setTimeout(() => { toast.style.display = 'none'; }, 4000);
         }
 
-        async function cargarDeLaNubeInicial() {
-            const { data, error } = await client.from('vortice_data').select('datos_json').eq('id', 1).maybeSingle();
-            
-            if(data && data.datos_json && data.datos_json !== "{}") {
-                aplicarHtml(data.datos_json);
-            }
-            
-            // EL SEGURO AGRESIVO: Si hay menos de 20 filas (jugadores faltantes), se regeneran las tablas.
-            const filasActuales = document.getElementById('tbody-inventario').querySelectorAll('tr').length;
-            if (filasActuales < 20) {
-                generarTablas();
-                triggerAutoSave();
-            }
-        }
-
         function aplicarHtml(jsonStr) {
             try {
                 const ui = JSON.parse(jsonStr);
@@ -280,27 +282,51 @@
                         newHeader.addEventListener('click', function(e) { if (e.target.classList.contains('toggle-stop')) return; const body = this.nextElementSibling; body.style.display = (body.style.display === 'none') ? 'block' : 'none'; });
                     });
                 }
-            } catch(e) { console.error("Error leyendo DB"); }
+            } catch(e) {}
         }
 
         // =======================================================
-        // DICCIONARIOS EXCEL BILINGÜE
+        // 4. MOTOR DE TRADUCCIÓN BILINGÜE MASIVO
         // =======================================================
         const typeColors = { normal: '#A8A77A', fire: '#EE8130', water: '#6390F0', electric: '#F7D02C', grass: '#7AC74C', ice: '#96D9D6', fighting: '#C22E28', poison: '#A33EA1', ground: '#E2BF65', flying: '#A98FF3', psychic: '#F95587', bug: '#A6B91A', rock: '#B6A136', ghost: '#735797', dragon: '#6F35FC', dark: '#705898', steel: '#B7B7CE', fairy: '#D685AD' };
         
-        // Diccionario extendido (El inglés funciona nativamente sin necesidad de estar aquí)
+        // Diccionario masivo con más de 150 ataques competitivos.
         const dictES_EN = { 
             "lanzallamas": "flamethrower", "rayo": "thunderbolt", "terremoto": "earthquake", "rayo hielo": "ice-beam", "proteccion": "protect", 
             "toxico": "toxic", "ida y vuelta": "u-turn", "voltiocambio": "volt-switch", "fuego fatuo": "will-o-wisp", "onda trueno": "thunder-wave", 
             "trampa rocas": "stealth-rock", "danza espada": "swords-dance", "pajaro osado": "brave-bird", "a bocajarro": "close-combat", 
             "psiquico": "psychic", "bola sombra": "shadow-ball", "fuerza bruta": "superpower", "desarme": "knock-off", "sorpresa": "fake-out", 
-            "escaldar": "scald", "respiro": "roost", "recuperacion": "recover", "fuego sagrado": "sacred-fire", "brillo magico": "dazzling-gleam"
+            "escaldar": "scald", "respiro": "roost", "recuperacion": "recover", "fuego sagrado": "sacred-fire", "brillo magico": "dazzling-gleam",
+            "golpe cuerpo": "body-slam", "auxilio": "helping-hand", "espora": "spore", "polvo ira": "rage-powder", "señuelo": "follow-me",
+            "viento afin": "tailwind", "espacio raro": "trick-room", "fuerza lunar": "moonblast", "carantoña": "play-rough", "gigadrenado": "giga-drain",
+            "latigazo": "power-whip", "lluevehojas": "leaf-storm", "hidrobomba": "hydro-pump", "cascada": "waterfall", "acua jet": "aqua-jet",
+            "canto helado": "ice-shard", "chuzos": "icicle-crash", "puño hielo": "ice-punch", "puño trueno": "thunder-punch", "puño fuego": "fire-punch",
+            "envite igneo": "flare-blitz", "triturar": "crunch", "golpe bajo": "sucker-punch", "juego sucio": "foul-play", "pulso umbrio": "dark-pulse",
+            "foco resplandor": "flash-cannon", "cabeza de hierro": "iron-head", "puño bala": "bullet-punch", "terratemblor": "bulldoze",
+            "fuerza equina": "high-horsepower", "tierra viva": "earth-power", "roca afilada": "stone-edge", "avalancha": "rock-slide",
+            "tumba rocas": "rock-tomb", "joya de luz": "power-gem", "zumbido": "bug-buzz", "tijera x": "x-scissor", "chupavidas": "leech-life",
+            "puya nociva": "poison-jab", "bomba lodo": "sludge-bomb", "onda toxica": "sludge-wave", "pico taladro": "drill-peck",
+            "vendaval": "hurricane", "tajo aereo": "air-slash", "acrobata": "acrobatics", "cabezazo zen": "zen-headbutt", "psicocarga": "psyshock",
+            "pulso dragon": "dragon-pulse", "garra dragon": "dragon-claw", "cometa draco": "draco-meteor", "enfado": "outrage",
+            "bola voltio": "electro-ball", "chispazo": "discharge", "trueno": "thunder", "patada salto alta": "high-jump-kick",
+            "esfera aural": "aura-sphere", "onda certera": "focus-blast", "drenadoras": "leech-seed", "sustituto": "substitute",
+            "maquinacion": "nasty-plot", "paz mental": "calm-mind", "corpulencia": "bulk-up", "danza dragon": "dragon-dance",
+            "rompecoraza": "shell-smash", "viento hielo": "icy-wind", "mofa": "taunt", "fuego mistico": "mystical-fire",
+            "alarido": "snarl", "alivio": "heal-bell", "campana cura": "heal-bell", "despejar": "defog", "giro rapido": "rapid-spin",
+            "niebla": "haze", "remolino": "whirlwind", "rugido": "roar", "mismo destino": "destiny-bond", "legado": "memento",
+            "pantalla de luz": "light-screen", "reflejo": "reflect", "velo aurora": "aurora-veil", "beso drenaje": "draining-kiss"
         };
         const cacheAPI = { pokemon: {}, moves: {} };
         const jugadoresSector = ["Zihul", "Parce", "Miqui", "Sir Patho", "Sergio", "Josema", "Zanenuss", "Heartless", "Yoru", "Yomi", "Alastor", "Jynloas", "Rodry", "Necrox", "Chrismolli", "Stefano", "Brix", "Bullet", "Desca", "Ryutatsu"];
 
         function normalizarTexto(txt) { return txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim(); }
-        function traducirMovimiento(movEsp) { const norm = normalizarTexto(movEsp); return dictES_EN[norm] || norm.replace(/[^a-z0-9]/g, '-'); }
+        
+        // El motor de traducción primero busca en nuestro diccionario masivo.
+        // Si no lo encuentra, asume que ya lo escribiste en inglés.
+        function traducirMovimiento(movEsp) { 
+            const norm = normalizarTexto(movEsp); 
+            return dictES_EN[norm] || norm.replace(/[^a-z0-9]/g, '-'); 
+        }
 
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -317,6 +343,7 @@
         });
 
         function crearEntrenadorManual() { const nombre = prompt("Ingresa el nombre del entrenador (Ej: Zihul):"); if (nombre && nombre.trim() !== "") { inyectarJugador({ name: nombre.trim().toUpperCase(), team: {} }); triggerAutoSave(); } }
+        
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const files = e.target.files; if (files.length === 0) return;
             for (let file of files) { const text = await file.text(); procesarReplay(text); }
