@@ -64,28 +64,48 @@
         .editable-field { background-color: #333; border: 1px solid #444; color: white; padding: 2px 4px; border-radius: 3px; font-size: 11px; flex-grow: 1; outline: none; }
         .move-list { list-style: none; padding: 0; margin: 8px 0; min-height: 20px;}
         
-        /* === NUEVO DISEÑO DE CHIP PARA LOS ATAQUES === */
+        /* DISEÑO DE CHIP PARA LOS ATAQUES */
         .move-item { 
             display: inline-flex; 
             align-items: center; 
             gap: 6px; 
-            background: #1a1a1a; /* Fondo oscuro */
+            background: #1a1a1a; 
             padding: 4px 8px; 
-            border-radius: 12px; /* Bordes redondeados tipo píldora */
+            border-radius: 12px; 
             margin: 3px;
-            border: 1px solid #444; /* Borde por defecto, se pintará con JS */
+            border: 1px solid #444; 
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            cursor: help; /* Cursor de ayuda para indicar que hay Tooltip */
+            cursor: help; 
         }
         .move-type-icon { font-size: 9px; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; font-weight: bold; background: #666; color: white; min-width: 35px; text-align: center; }
         .move-name { outline: none; font-size: 12px; color: #eee; font-weight: 500; text-transform: capitalize;}
         
-        /* Efecto Hover para la X: Invisible por defecto, visible al pasar el mouse */
+        /* Efecto Hover para la X */
         .btn-small-del { background-color: transparent; color: #ff4d4d; border: none; font-weight: bold; cursor: pointer; padding: 0 4px; font-size: 12px; opacity: 0; transition: opacity 0.2s ease; }
         .move-item:hover .btn-small-del { opacity: 1; }
 
         .btn-add-move { background-color: #444; color: #ccc; border: 1px dashed #666; padding: 3px; border-radius: 3px; cursor: pointer; width: 100%; font-size: 10px; margin-top: 2px; }
         
+        /* === PANEL FLOTANTE CUSTOM (TOOLTIP) === */
+        #custom-tooltip {
+            position: fixed;
+            background: rgba(20, 15, 25, 0.95);
+            border: 2px solid #c77dff;
+            color: #fff;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 10000;
+            display: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.7);
+            max-width: 220px;
+            backdrop-filter: blur(4px);
+        }
+        .tt-header { font-weight: bold; color: #c77dff; margin-bottom: 5px; border-bottom: 1px solid #444; padding-bottom: 4px; text-transform: uppercase; font-size: 13px;}
+        .tt-stats { display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; background: #222; padding: 4px; border-radius: 4px;}
+        .tt-desc { color: #ddd; line-height: 1.4; }
+
         .sheet-tabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
         .sheet-btn { background-color: #111; color: #aaa; border: 1px solid #444; padding: 8px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         .sheet-btn.active { background-color: #9d4edd; color: white; border-color: #c77dff; }
@@ -304,8 +324,6 @@
         }
 
         const typeColors = { normal: '#A8A77A', fire: '#EE8130', water: '#6390F0', electric: '#F7D02C', grass: '#7AC74C', ice: '#96D9D6', fighting: '#C22E28', poison: '#A33EA1', ground: '#E2BF65', flying: '#A98FF3', psychic: '#F95587', bug: '#A6B91A', rock: '#B6A136', ghost: '#735797', dragon: '#6F35FC', dark: '#705898', steel: '#B7B7CE', fairy: '#D685AD' };
-        
-        // Diccionario Estático
         const dictES_EN = { 
             "proteccion":"protect", "retroceso":"return", "frustracion":"frustration", "doblefilo":"double-edge", "placaje":"tackle", "golpecuerpo":"body-slam", "campanacura":"heal-bell", "batido":"milk-drink", "amortiguador":"soft-boiled", "recuperacion":"recover", "dividedolor":"pain-split", "danzaespada":"swords-dance", "sorpresa":"fake-out", "velocidadextrema":"extreme-speed", "ataquerapido":"quick-attack", "sustituto":"substitute", "esfuerzo":"endeavor", "tambor":"belly-drum", "relevo":"baton-pass", "auxilio":"helping-hand", "señuelo":"follow-me", "transformacion":"transform", "canto":"sing", "sonambulo":"sleep-talk", "ronquido":"snore",
             "lanzallamas":"flamethrower", "llamarada":"fire-blast", "fuegosagrado":"sacred-fire", "enviteigneo":"flare-blitz", "sofoco":"overheat", "fuegofatuo":"will-o-wisp", "diasoleado":"sunny-day", "nitrocarga":"flame-charge", "ondaignea":"heat-wave", "puñofuego":"fire-punch", "colmilloigneo":"fire-fang", "estallido":"eruption", "danzallama":"fiery-dance", "bombaignea":"magma-storm", "fuegomistico":"mystical-fire", "golpecalor":"heat-crash",
@@ -441,57 +459,29 @@
             triggerAutoSave(); 
         }
 
-        // =======================================================
-        // LÓGICA DEL DISEÑO CHIP Y TOOLTIP EN ESPAÑOL
-        // =======================================================
         async function crearElementoMovimiento(moveOriginal) {
             const li = document.createElement('div'); 
             li.className = 'move-item'; 
             let type = '???'; 
             let color = '#444'; 
-            let power = '--';
-            let accuracy = '--';
-            let desc = 'Sin descripción disponible.';
-            
             const apiMove = traducirMovimiento(moveOriginal);
 
             try { 
-                let mvData;
-                // Revisamos si ya descargamos toda la info de este ataque antes
-                if (cacheAPI.moves[apiMove] && cacheAPI.moves[apiMove].fullData) { 
-                    mvData = cacheAPI.moves[apiMove].fullData;
+                if (cacheAPI.moves[apiMove]) { 
+                    type = cacheAPI.moves[apiMove].type; 
+                    color = cacheAPI.moves[apiMove].color; 
                 } else { 
                     const res = await fetch(`https://pokeapi.co/api/v2/move/${apiMove}`); 
                     if(res.ok) { 
-                        mvData = await res.json(); 
-                        cacheAPI.moves[apiMove] = { type: mvData.type.name, color: typeColors[mvData.type.name], fullData: mvData }; 
+                        const mv = await res.json(); 
+                        type = mv.type.name; 
+                        color = typeColors[type] || '#444'; 
+                        cacheAPI.moves[apiMove] = { type, color, fullData: mv }; 
                     } 
                 } 
-                
-                // Si encontramos el ataque, extraemos la info para el cuadro flotante
-                if (mvData) {
-                    type = mvData.type.name;
-                    color = typeColors[type] || '#444';
-                    power = mvData.power !== null ? mvData.power : '--';
-                    accuracy = mvData.accuracy !== null ? mvData.accuracy : '--';
-                    
-                    // Busca específicamente la descripción en español ("es")
-                    const descEsp = mvData.flavor_text_entries.find(entry => entry.language.name === 'es');
-                    if (descEsp) {
-                        desc = descEsp.flavor_text.replace(/\n|\f/g, ' '); // Limpia saltos de línea raros de la API
-                    } else {
-                        // Si no existe en español, intenta traerla en inglés
-                        const descEng = mvData.flavor_text_entries.find(entry => entry.language.name === 'en');
-                        if (descEng) desc = descEng.flavor_text.replace(/\n|\f/g, ' ') + " (Inglés)";
-                    }
-                }
             } catch(e) {}
             
-            // Asigna el color al borde del Chip
             li.style.borderColor = color;
-            // Inyecta la información en el atributo 'title' nativo para el Tooltip
-            li.title = `Potencia: ${power} | Precisión: ${accuracy}\n${desc}`;
-
             li.innerHTML = `<span class="move-type-icon" style="background-color: ${color}">${type}</span><span class="move-name" contenteditable="true">${moveOriginal}</span><button class="btn-small-del" onclick="this.parentElement.remove(); triggerAutoSave();">✖</button>`; 
             return li;
         }
@@ -499,7 +489,7 @@
         async function colorizarMT(inputEl) {
             const moveOriginal = inputEl.value.trim(); if(!moveOriginal) { inputEl.style.color = 'white'; inputEl.setAttribute('value', ''); triggerAutoSave(); return; }
             const apiMove = traducirMovimiento(moveOriginal);
-            try { if (cacheAPI.moves[apiMove]) inputEl.style.color = cacheAPI.moves[apiMove].color; else { const res = await fetch(`https://pokeapi.co/api/v2/move/${apiMove}`); if(res.ok) { const mv = await res.json(); const color = typeColors[mv.type.name] || '#2ed573'; cacheAPI.moves[apiMove] = { type: mv.type.name, color: color }; inputEl.style.color = color; } } } catch(e) {}
+            try { if (cacheAPI.moves[apiMove]) inputEl.style.color = cacheAPI.moves[apiMove].color; else { const res = await fetch(`https://pokeapi.co/api/v2/move/${apiMove}`); if(res.ok) { const mv = await res.json(); const color = typeColors[mv.type.name] || '#2ed573'; cacheAPI.moves[apiMove] = { type: mv.type.name, color: color, fullData: mv }; inputEl.style.color = color; } } } catch(e) {}
             inputEl.setAttribute('value', inputEl.value); triggerAutoSave(); 
         }
 
@@ -509,6 +499,77 @@
             try { const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${pkmnName}`); if(res.ok) { const data = await res.json(); const sprite = data.sprites.front_default || ''; const typesHTML = data.types.map(t => `<span class="move-type-icon" style="background-color: ${typeColors[t.type.name]}">${t.type.name}</span>`).join(' '); displayDiv.innerHTML = `<img src="${sprite}" style="width:50px; height:50px; image-rendering:pixelated; margin-bottom:-5px;"><br>${typesHTML}`; } else { displayDiv.innerHTML = `<span style="font-size:10px; color:#aaa;">(No encontrado)</span>`; } } catch(e) { displayDiv.innerHTML = `<span style="font-size:10px; color:#aaa;">(Error API)</span>`; }
             inputEl.setAttribute('value', inputEl.value); triggerAutoSave(); 
         }
+
+        // =======================================================
+        // LÓGICA DEL PANEL FLOTANTE CUSTOMIZADO (TOOLTIP)
+        // =======================================================
+        const tooltip = document.createElement('div');
+        tooltip.id = 'custom-tooltip';
+        document.body.appendChild(tooltip);
+
+        document.addEventListener('mouseover', async (e) => {
+            const moveItem = e.target.closest('.move-item');
+            if (moveItem) {
+                const moveNameEl = moveItem.querySelector('.move-name');
+                if(!moveNameEl) return;
+                const moveOriginal = moveNameEl.innerText.trim();
+                
+                tooltip.innerHTML = `<div class="tt-desc">Buscando datos...</div>`;
+                tooltip.style.display = 'block';
+                
+                // Posiciona el tooltip justo abajo del ataque
+                const rect = moveItem.getBoundingClientRect();
+                tooltip.style.left = (rect.left) + 'px';
+                tooltip.style.top = (rect.bottom + 8) + 'px';
+
+                const apiMove = traducirMovimiento(moveOriginal);
+                
+                try {
+                    let mvData;
+                    if (cacheAPI.moves[apiMove] && cacheAPI.moves[apiMove].fullData) {
+                        mvData = cacheAPI.moves[apiMove].fullData;
+                    } else {
+                        const res = await fetch(`https://pokeapi.co/api/v2/move/${apiMove}`);
+                        if(res.ok) {
+                            mvData = await res.json();
+                            cacheAPI.moves[apiMove] = { type: mvData.type.name, color: typeColors[mvData.type.name], fullData: mvData };
+                        }
+                    }
+
+                    if (mvData && tooltip.style.display === 'block') { 
+                        let power = mvData.power !== null ? mvData.power : '--';
+                        let accuracy = mvData.accuracy !== null ? mvData.accuracy : '--';
+                        let desc = 'Sin descripción.';
+                        
+                        // Busca la descripción en español, si no, usa la de inglés
+                        const descEsp = mvData.flavor_text_entries.find(entry => entry.language.name === 'es');
+                        if (descEsp) {
+                            desc = descEsp.flavor_text.replace(/\n|\f/g, ' ');
+                        } else {
+                            const descEng = mvData.flavor_text_entries.find(entry => entry.language.name === 'en');
+                            if (descEng) desc = descEng.flavor_text.replace(/\n|\f/g, ' ') + " (EN)";
+                        }
+                        
+                        tooltip.innerHTML = `
+                            <div class="tt-header">${moveOriginal}</div>
+                            <div class="tt-stats"><span>💥 Pot: ${power}</span><span>🎯 Prec: ${accuracy}</span></div>
+                            <div class="tt-desc">${desc}</div>
+                        `;
+                    }
+                } catch(err) {
+                    if (tooltip.style.display === 'block') {
+                        tooltip.innerHTML = `<div class="tt-desc">Ataque no encontrado en la base de datos.</div>`;
+                    }
+                }
+            }
+        });
+
+        // Ocultar el panel cuando el mouse se quita del ataque
+        document.addEventListener('mouseout', (e) => {
+            if (e.target.closest('.move-item')) {
+                tooltip.style.display = 'none';
+            }
+        });
     </script>
 </body>
 </html>
