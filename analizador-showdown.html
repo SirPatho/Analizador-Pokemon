@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>S.S. NOVA - Base de Datos: SECTOR VÓRTICE</title>
+    <style>
+        :root {
+            --bg-base: #000000;
+            --bg-panel: rgba(20, 15, 25, 0.95);
+            --bg-card: rgba(30, 25, 40, 0.9);
+            --vortice-primary: #9d4edd;
+            --vortice-light: #c77dff;
+            --vortice-dark: #3c096c;
+            --accent-red: #ff4d4d;
+            --accent-green: #2ed573;
+            --text-main: #e0e0e0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-base);
+            background-image: linear-gradient(rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.85)), url('https://images.unsplash.com/photo-1462331940025-496dfbfc7564?q=80&w=2048&auto=format&fit=crop');
+            background-size: cover;
+            background-attachment: fixed;
+            color: var(--text-main);
+            margin: 0;
+            padding: 0; /* Ajustado para el overlay */
+            min-height: 100vh;
+        }
+
+        /* ==========================================
+           PANTALLA DE BLOQUEO (SEGURIDAD)
+           ========================================== */
+        #login-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: var(--bg-base);
+            background-image: linear-gradient(rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.9)), url('https://images.unsplash.com/photo-1462331940025-496dfbfc7564?q=80&w=2048&auto=format&fit=crop');
+            background-size: cover; z-index: 9999;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .login-box {
+            background-color: var(--bg-panel); border: 2px solid var(--vortice-primary);
+            padding: 40px; border-radius: 10px; text-align: center; box-shadow: 0 0 30px rgba(157, 78, 221, 0.5);
+        }
+        .login-box h2 { color: var(--vortice-light); letter-spacing: 2px; margin-bottom: 20px; text-transform: uppercase; }
+        .login-box input {
+            padding: 10px; font-size: 16px; border-radius: 5px; border: 1px solid #555;
+            background-color: #222; color: white; width: 80%; margin-bottom: 20px; text-align: center;
+        }
+        .login-box button {
+            background-color: var(--vortice-primary); color: white; border: none; padding: 10px 30px;
+            font-size: 16px; font-weight: bold; border-radius: 5px; cursor: pointer; transition: 0.2s;
+        }
+        .login-box button:hover { background-color: var(--vortice-light); color: black; }
+        #login-error { color: var(--accent-red); margin-top: 15px; font-weight: bold; display: none; }
+
+        /* Contenedor Principal (Oculto al inicio) */
+        #main-app { display: none; padding: 20px; }
+
+        /* ==========================================
+           INTERFAZ PRINCIPAL
+           ========================================== */
+        h1 {
+            text-align: center; color: var(--vortice-light); text-transform: uppercase;
+            letter-spacing: 3px; text-shadow: 0 0 15px rgba(199, 125, 255, 0.5); margin-bottom: 25px;
+        }
+
+        .controls-container {
+            display: flex; justify-content: center; align-items: center; gap: 15px;
+            margin-bottom: 20px; background-color: var(--bg-panel); padding: 15px;
+            border-radius: 8px; border: 1px solid var(--vortice-dark); max-width: 700px;
+            margin-left: auto; margin-right: auto;
+        }
+
+        input[type="file"] { display: none; }
+        .btn-main {
+            color: white; padding: 10px 20px; border-radius: 5px; cursor: pointer;
+            font-weight: bold; font-size: 14px; border: none; transition: 0.2s;
+        }
+        .btn-upload { background-color: var(--vortice-primary); }
+        .btn-upload:hover { background-color: var(--vortice-light); color: #000; }
+        .btn-manual { background-color: var(--accent-green); }
+        .btn-manual:hover { background-color: #7bed9f; color: #000; }
+
+        /* Pestañas Principales */
+        .tabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab-btn {
+            background-color: #222; color: white; border: 1px solid var(--vortice-dark);
+            padding: 8px 16px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s;
+        }
+        .tab-btn:hover { background-color: #333; }
+        .tab-btn.active { background-color: var(--vortice-primary); box-shadow: 0 0 10px rgba(157, 78, 221, 0.5); }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; align-items: start; }
+        #mercado-mts.active { display: block; } /* Excepción para la hoja de mercado */
+
+        /* Tarjetas de Entrenadores */
+        .player-accordion {
+            background-color: var(--bg-panel); border-radius: 8px; border: 1px solid var(--vortice-dark);
+            overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+        }
+        .player-header {
+            background-color: #111; padding: 10px 15px; display: flex; justify-content: space-between;
+            align-items: center; cursor: pointer; border-bottom: 1px solid var(--vortice-dark);
+        }
+        .player-header:hover { background-color: #1a1a1a; }
+        .player-name { font-size: 16px; font-weight: bold; color: var(--vortice-light); text-transform: uppercase; }
+
+        .btn-delete { border: none; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-weight: bold; color: white; font-size: 12px; background-color: var(--accent-red); }
+        .btn-add-pkmn { 
+            background-color: var(--vortice-primary); color: white; border: none; border-radius: 4px;
+            display: block; margin: 15px auto 5px auto; padding: 6px 15px; font-weight: bold; font-size: 12px; cursor: pointer;
+        }
+        .player-body { padding: 15px; }
+        .team-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+
+        /* Tarjeta Pokémon */
+        .pokemon-card { background-color: var(--bg-card); border-top: 3px solid var(--vortice-primary); padding: 10px; border-radius: 5px; font-size: 12px; }
+        .header-card { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .header-card img { width: 40px; height: 40px; image-rendering: pixelated; margin-left: -5px; }
+        .header-card h3 { margin: 0; color: #fff; text-transform: capitalize; flex-grow: 1; font-size: 13px;}
+        .editable-line { display: flex; align-items: center; margin-bottom: 4px; gap: 5px; }
+        .editable-field { background-color: #333; border: 1px solid #444; color: white; padding: 2px 4px; border-radius: 3px; font-size: 11px; flex-grow: 1; outline: none; }
+        .move-list { list-style: none; padding: 0; margin: 8px 0; min-height: 20px;}
+        .move-item { display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.4); padding: 3px 5px; border-radius: 3px; margin-bottom: 3px; }
+        .move-type-icon { font-size: 9px; padding: 2px 4px; border-radius: 2px; text-transform: uppercase; font-weight: bold; background: #666; color: white; min-width: 35px; text-align: center; }
+        .move-name { flex-grow: 1; outline: none; font-size: 11px;}
+        .btn-add-move { background-color: #444; color: #ccc; border: 1px dashed #666; padding: 3px; border-radius: 3px; cursor: pointer; width: 100%; font-size: 10px; margin-top: 2px; }
+        .btn-small-del { background-color: transparent; color: var(--accent-red); border: none; font-weight: bold; cursor: pointer; padding: 0 4px;}
+
+        /* =========================================
+           SECCIÓN DE MERCADO Y TABLAS
+        ========================================== */
+        .sheet-tabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
+        .sheet-btn { background-color: #111; color: #aaa; border: 1px solid #444; padding: 8px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .sheet-btn.active { background-color: var(--vortice-primary); color: white; border-color: var(--vortice-light); }
+        .sheet-content { display: none; overflow-x: auto; }
+        .sheet-content.active { display: block; }
+
+        .mt-table { width: 100%; border-collapse: collapse; background-color: var(--bg-panel); font-size: 12px; min-width: 900px; margin-bottom: 30px; }
+        .mt-table th, .mt-table td { border: 1px solid #444; padding: 8px; text-align: center; vertical-align: middle; }
+        .mt-table th { background-color: #111; color: var(--vortice-light); }
+        
+        .td-dadas { background-color: rgba(46, 213, 115, 0.1); }
+        .td-recibidas { background-color: rgba(255, 71, 87, 0.1); }
+        
+        .mt-input {
+            width: 90px; background: transparent; border: none; border-bottom: 1px solid #555;
+            color: white; font-size: 11px; margin: 3px; text-align: center; padding: 2px; font-weight: bold;
+        }
+        .mt-input:focus { outline: none; border-bottom-color: var(--vortice-primary); }
+
+        /* Tabla de Pokémon Intercambiados */
+        .pkmn-display { margin-top: 5px; min-height: 40px; }
+        .pkmn-input { width: 100px; background: #222; border: 1px solid #555; color: white; font-size: 11px; text-align: center; padding: 4px; border-radius: 3px;}
+
+        .inventory-list { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-start; margin-bottom: 5px; }
+        .inventory-add-container { display: flex; gap: 5px; align-items: center; justify-content: flex-start; }
+        .input-new-mt { background-color: #222; border: 1px solid #555; color: white; padding: 4px; border-radius: 3px; font-size: 11px; width: 120px; outline: none; }
+        .btn-add-inventory { background-color: var(--vortice-primary); color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; padding: 4px 8px; font-size: 11px; }
+
+        @media (max-width: 1200px) { .tab-content.active { grid-template-columns: 1fr; } }
+        @media (max-width: 600px) { .team-grid { grid-template-columns: repeat(2, 1fr); } }
+    </style>
+</head>
+<body>
+
+    <!-- OVERLAY DE SEGURIDAD -->
+    <div id="login-overlay">
+        <div class="login-box">
+            <h2>🔒 S.S. NOVA<br>ACCESO RESTRINGIDO</h2>
+            <input type="password" id="pass-input" placeholder="Introduce la contraseña" onkeypress="if(event.key === 'Enter') checkPass()">
+            <br>
+            <button onclick="checkPass()">Autorizar Acceso</button>
+            <div id="login-error">Acceso Denegado. Contraseña incorrecta.</div>
+        </div>
+    </div>
+
+    <!-- CONTENIDO PRINCIPAL -->
+    <div id="main-app">
+        <h1>🌌 BASE DE DATOS: SECTOR VÓRTICE</h1>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-target="tramo-1">Tramo 1</button>
+            <button class="tab-btn" data-target="tramo-2">Tramo 2</button>
+            <button class="tab-btn" data-target="tramo-3">Tramo 3</button>
+            <button class="tab-btn" data-target="tramo-4">Tramo 4</button>
+            <button class="tab-btn" data-target="episodio-delta">Episodio Delta</button>
+            <button class="tab-btn" data-target="mercado-mts" style="background-color: #111; border-color: #fff;">📜 Mercado y Balances</button>
+        </div>
+
+        <div class="controls-container" id="main-controls">
+            <label for="fileInput" class="btn-main btn-upload">📁 Subir HTML</label>
+            <input type="file" id="fileInput" multiple accept=".html">
+            <button class="btn-main btn-manual" onclick="crearEntrenadorManual()">➕ Crear Entrenador Manual</button>
+        </div>
+
+        <!-- Tramos -->
+        <div id="tramo-1" class="tab-content active"></div>
+        <div id="tramo-2" class="tab-content"></div>
+        <div id="tramo-3" class="tab-content"></div>
+        <div id="tramo-4" class="tab-content"></div>
+        <div id="episodio-delta" class="tab-content"></div>
+
+        <!-- Mercado y Tablas de Balance -->
+        <div id="mercado-mts" class="tab-content">
+            <div class="sheet-tabs">
+                <button class="sheet-btn active" data-sheet="sheet-inventario">🎒 Inventario MTs</button>
+                <button class="sheet-btn" data-sheet="sheet-prestamos">🤝 Préstamos MTs</button>
+                <button class="sheet-btn" data-sheet="sheet-pokemons">🔄 Intercambios Pokémon</button>
+            </div>
+
+            <div id="sheet-inventario" class="sheet-content active">
+                <table class="mt-table">
+                    <thead><tr><th style="width: 15%;">Jugador</th><th>Mejores MTs (Propiedad)</th></tr></thead>
+                    <tbody id="tbody-inventario"></tbody>
+                </table>
+            </div>
+
+            <div id="sheet-prestamos" class="sheet-content">
+                <table class="mt-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2">Jugador</th>
+                            <th colspan="2">Tramo 1</th><th colspan="2">Tramo 2</th>
+                            <th colspan="2">Tramo 3</th><th colspan="2">Tramo 4</th>
+                        </tr>
+                        <tr>
+                            <th>Dadas (Max 2)</th><th>Recibidas (Max 2)</th><th>Dadas (Max 2)</th><th>Recibidas (Max 2)</th>
+                            <th>Dadas (Max 2)</th><th>Recibidas (Max 2)</th><th>Dadas (Max 2)</th><th>Recibidas (Max 2)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-prestamos"></tbody>
+                </table>
+            </div>
+
+            <div id="sheet-pokemons" class="sheet-content">
+                <table class="mt-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2">Jugador</th>
+                            <th colspan="2">Tramo 1</th><th colspan="2">Tramo 2</th>
+                            <th colspan="2">Tramo 3</th><th colspan="2">Tramo 4</th>
+                        </tr>
+                        <tr>
+                            <th>Pokémon Dado</th><th>Pokémon Recibido</th><th>Pokémon Dado</th><th>Pokémon Recibido</th>
+                            <th>Pokémon Dado</th><th>Pokémon Recibido</th><th>Pokémon Dado</th><th>Pokémon Recibido</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-pokemons"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // SEGURIDAD
+        // ==========================================
+        function checkPass() {
+            const pass = document.getElementById('pass-input').value;
+            if (pass === "Nebula Vortex 20") {
+                document.getElementById('login-overlay').style.display = 'none';
+                document.getElementById('main-app').style.display = 'block';
+                generarTablas(); // Genera las tablas solo cuando se autoriza
+            } else {
+                document.getElementById('login-error').style.display = 'block';
+            }
+        }
+
+        // ==========================================
+        // DICCIONARIOS Y DATOS
+        // ==========================================
+        const typeColors = {
+            normal: '#A8A77A', fire: '#EE8130', water: '#6390F0', electric: '#F7D02C',
+            grass: '#7AC74C', ice: '#96D9D6', fighting: '#C22E28', poison: '#A33EA1',
+            ground: '#E2BF65', flying: '#A98FF3', psychic: '#F95587', bug: '#A6B91A',
+            rock: '#B6A136', ghost: '#735797', dragon: '#6F35FC', dark: '#705898',
+            steel: '#B7B7CE', fairy: '#D685AD'
+        };
+
+        // Diccionario base Español -> Inglés
+        const dictES_EN = {
+            "lanzallamas": "flamethrower", "rayo": "thunderbolt", "terremoto": "earthquake", "rayo hielo": "ice-beam",
+            "proteccion": "protect", "toxico": "toxic", "ida y vuelta": "u-turn", "voltiocambio": "volt-switch",
+            "fuego fatuo": "will-o-wisp", "onda trueno": "thunder-wave", "trampa rocas": "stealth-rock",
+            "danza espada": "swords-dance", "pajaro osado": "brave-bird", "a bocajarro": "close-combat",
+            "psiquico": "psychic", "bola sombra": "shadow-ball", "fuerza bruta": "superpower", "voto fuego": "fire-pledge", 
+            "electrocañon": "zap-cannon", "explosion": "explosion", "auxilio": "helping-hand", "arraigo": "ingrain", 
+            "arrumaco": "play-nice", "empujon": "arm-thrust", "gancho alto": "sky-uppercut", "danza llama": "fiery-dance", 
+            "megapuño": "mega-punch", "hoja afilada": "razor-leaf", "barrera espinosa": "spiky-shield", "truco": "trick", 
+            "tijera x": "x-scissor", "lluevehojas": "leaf-storm", "despejar": "defog", "inversion": "reversal",
+            "deseo cura": "healing-wish", "treparrocas": "rock-climb", "deseo": "wish", "sol matinal": "morning-sun",
+            "paranormal": "extrasensory", "giro rapido": "rapid-spin", "palmeo": "force-palm", "golpe calor": "heat-crash",
+            "chuzos": "icicle-crash", "torm. de diamantes": "diamond-storm", "latigazo": "power-whip", "patada s. alta": "high-jump-kick",
+            "brecha negra": "dark-void", "garra brutal": "crush-claw", "infierno": "inferno", "danza dragon": "dragon-dance",
+            "deseo oculto": "doom-desire", "estimulo": "smelling-salts", "cabezazo zen": "zen-headbutt", "onda certera": "focus-blast",
+            "chirrido": "screech", "rueda fuego": "flame-wheel", "bomba ignea": "magma-storm", "afilar": "sharpen",
+            "brazo pincho": "needle-arm", "brillo magico": "dazzling-gleam", "aromaterapia": "aromatherapy",
+            "rompe coraza": "shell-smash", "puño dinamico": "dynamic-punch", "residuos": "sludge", "doble bofeton": "double-slap",
+            "estoicismo": "struggle-bug", "corte furia": "fury-cutter", "danza amiga": "teeter-dance", "burbuja": "bubble",
+            "granizo": "hail", "cambia fuerza": "power-swap", "celebracion": "celebrate", "garra umbria": "shadow-claw",
+            "planta feroz": "frenzy-plant", "retribucion": "return", "esfuerzo": "endeavor", "alboroto": "uproar",
+            "resplandor": "luster-purge", "escudo real": "kings-shield", "golpe": "slam"
+        };
+
+        const cacheAPI = { pokemon: {}, moves: {} };
+        const jugadoresSector = ["Zihul", "Parce", "Miqui", "Sir Patho", "Sergio", "Josema", "Zanenuss", "Heartless", "Yoru", "Yomi", "Alastor", "Jynloas", "Rodry", "Necrox", "Chrismolli", "Stefano", "Brix", "Bullet", "Desca", "Ryutatsu"];
+
+        // Función normalizadora (quita tildes y pasa a minúscula)
+        function normalizarTexto(txt) {
+            return txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        }
+
+        function traducirMovimiento(movEsp) {
+            const norm = normalizarTexto(movEsp);
+            return dictES_EN[norm] || norm.replace(/[^a-z0-9]/g, '-');
+        }
+
+        // ==========================================
+        // PESTAÑAS Y SUB-PESTAÑAS
+        // ==========================================
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                const targetId = btn.getAttribute('data-target');
+                document.getElementById(targetId).classList.add('active');
+                document.getElementById('main-controls').style.display = (targetId === 'mercado-mts') ? 'none' : 'flex';
+            });
+        });
+
+        document.querySelectorAll('.sheet-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.sheet-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.sheet-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById(btn.getAttribute('data-sheet')).classList.add('active');
+            });
+        });
+
+        // ==========================================
+        // ENTRENADORES (HTML REPLAYS)
+        // ==========================================
+        function crearEntrenadorManual() {
+            const nombre = prompt("Ingresa el nombre del entrenador (Ej: Zihul):");
+            if (nombre && nombre.trim() !== "") inyectarJugador({ name: nombre.trim().toUpperCase(), team: {} });
+        }
+
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const files = e.target.files;
+            if (files.length === 0) return;
+            for (let file of files) {
+                const text = await file.text();
+                procesarReplay(text);
+            }
+            e.target.value = '';
+        });
+
+        function procesarReplay(html) {
+            const match = html.match(/<script type="text\/plain" class="battle-log-data">([\s\S]*?)<\/script>/);
+            if (!match) return;
+            const lineas = match[1].split('\n');
+            const data = { p1: { name: '', team: {} }, p2: { name: '', team: {} } };
+            const apodos = { p1: {}, p2: {} };
+
+            lineas.forEach(linea => {
+                const p = linea.split('|');
+                if (p.length < 2) return;
+                if (p[1] === 'player' && (p[2] === 'p1' || p[2] === 'p2') && p[3]) data[p[2]].name = p[3].toUpperCase();
+                if (p[1] === 'poke' && (p[2] === 'p1' || p[2] === 'p2')) data[p[2]].team[p[3].split(',')[0].trim()] = { moves: new Set(), hab: '?', obj: '?' };
+                if (p[1] === 'switch') {
+                    const nick = p[2].substring(4).trim(); const especie = p[3].split(',')[0].trim();
+                    apodos[p[2].substring(0, 2)][nick] = especie;
+                    if(!data[p[2].substring(0, 2)].team[especie]) data[p[2].substring(0, 2)].team[especie] = { moves: new Set(), hab: '?', obj: '?' };
+                }
+                if (p[1] === 'move') {
+                    const especie = apodos[p[2].substring(0, 2)][p[2].substring(4).trim()];
+                    if (especie && data[p[2].substring(0, 2)].team[especie]) data[p[2].substring(0, 2)].team[especie].moves.add(p[3].trim());
+                }
+                if (p[1] === '-activate' && p[3] && p[3].startsWith('ability:')) {
+                    const especie = apodos[p[2].substring(0, 2)][p[2].substring(4).trim()];
+                    if (especie && data[p[2].substring(0, 2)].team[especie]) data[p[2].substring(0, 2)].team[especie].hab = p[3].replace('ability:', '').trim();
+                }
+                if ((p[1] === '-enditem' || p[1] === '-item') && p[2].match(/^p[12]a:/)) {
+                    const especie = apodos[p[2].substring(0, 2)][p[2].substring(4).trim()];
+                    if (especie && data[p[2].substring(0, 2)].team[especie]) data[p[2].substring(0, 2)].team[especie].obj = p[3].trim();
+                }
+            });
+
+            if (data.p1.name) inyectarJugador(data.p1);
+            if (data.p2.name) inyectarJugador(data.p2);
+        }
+
+        async function inyectarJugador(playerData) {
+            const activeTab = document.querySelector('.tab-content.active');
+            let playerDiv = activeTab.querySelector(`.player-accordion[data-player="${playerData.name}"]`);
+
+            if (!playerDiv) {
+                playerDiv = document.createElement('div'); playerDiv.className = 'player-accordion'; playerDiv.setAttribute('data-player', playerData.name);
+                playerDiv.innerHTML = `
+                    <div class="player-header"><span class="player-name">👤 ${playerData.name}</span><div class="player-actions"><button class="btn-delete toggle-stop" onclick="eliminarJugador(this)">X Eliminar</button></div></div>
+                    <div class="player-body"><div class="team-grid"></div><button class="btn-add-pkmn" onclick="añadirPokemonManual(this)">+ Añadir Pokémon</button></div>
+                `;
+                playerDiv.querySelector('.player-header').addEventListener('click', function(e) {
+                    if (e.target.classList.contains('toggle-stop')) return;
+                    const body = this.nextElementSibling; body.style.display = (body.style.display === 'none') ? 'block' : 'none';
+                });
+                activeTab.appendChild(playerDiv);
+            }
+
+            const grid = playerDiv.querySelector('.team-grid');
+            for (const [especie, info] of Object.entries(playerData.team)) {
+                let cardExistente = grid.querySelector(`.pokemon-card[data-species="${especie}"]`);
+                if (!cardExistente) { grid.appendChild(await crearTarjetaHTML(especie, info.hab, info.obj, Array.from(info.moves))); } 
+                else {
+                    const ul = cardExistente.querySelector('.move-list');
+                    const ataquesActuales = Array.from(ul.querySelectorAll('.move-name')).map(s => s.innerText);
+                    for (const move of info.moves) { if (!ataquesActuales.includes(move)) ul.appendChild(await crearElementoMovimiento(move)); }
+                }
+            }
+            playerDiv.querySelector('.player-body').style.display = 'block';
+        }
+
+        function eliminarJugador(btn) { if(confirm("¿Eliminar entrenador?")) btn.closest('.player-accordion').remove(); }
+
+        async function crearTarjetaHTML(especie, hab, obj, moves) {
+            const card = document.createElement('div'); card.className = 'pokemon-card'; card.setAttribute('data-species', especie);
+            let spriteUrl = ''; const apiName = especie.toLowerCase().replace(/[^a-z0-9]/g, '-');
+            try {
+                if (cacheAPI.pokemon[apiName]) spriteUrl = cacheAPI.pokemon[apiName];
+                else { const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${apiName}`); if(res.ok) { const pkmn = await res.json(); spriteUrl = pkmn.sprites.front_default || ''; cacheAPI.pokemon[apiName] = spriteUrl; } }
+            } catch(e) {}
+
+            card.innerHTML = `
+                <div class="header-card">
+                    ${spriteUrl ? `<img src="${spriteUrl}">` : '<span style="width:40px;text-align:center;">❓</span>'}
+                    <h3 contenteditable="true">${especie}</h3><button class="btn-small-del" onclick="this.closest('.pokemon-card').remove()">✖</button>
+                </div>
+                <div class="editable-line"><span style="font-size:10px;">🛡️</span><input class="editable-field" value="${hab}" placeholder="Habilidad"></div>
+                <div class="editable-line"><span style="font-size:10px;">🎒</span><input class="editable-field" value="${obj}" placeholder="Objeto"></div>
+                <ul class="move-list"></ul><button class="btn-add-move">+ Ataque</button>
+            `;
+            const ul = card.querySelector('.move-list');
+            for (const move of moves) ul.appendChild(await crearElementoMovimiento(move));
+            card.querySelector('.btn-add-move').onclick = async () => {
+                const moveName = prompt("Nombre del ataque (Español o Inglés):");
+                if (moveName) ul.appendChild(await crearElementoMovimiento(moveName));
+            };
+            return card;
+        }
+
+        async function añadirPokemonManual(btn) {
+            const especie = prompt("¿Qué Pokémon quieres añadir? (Inglés)");
+            if (especie) btn.previousElementSibling.appendChild(await crearTarjetaHTML(especie, "", "", []));
+        }
+
+        // ==========================================
+        // GENERACIÓN DE TABLAS EXCEL
+        // ==========================================
+        function generarTablas() {
+            const tbodyInv = document.getElementById('tbody-inventario');
+            const tbodyPres = document.getElementById('tbody-prestamos');
+            const tbodyPkmn = document.getElementById('tbody-pokemons');
+            
+            // Evitar duplicados si llama a generar múltiples veces
+            tbodyInv.innerHTML = ''; tbodyPres.innerHTML = ''; tbodyPkmn.innerHTML = '';
+
+            jugadoresSector.forEach((jugador, index) => {
+                // INVENTARIO
+                let trInv = document.createElement('tr');
+                trInv.innerHTML = `<td style="font-weight: bold; color: var(--vortice-light); text-align: left; padding-left: 15px;">${jugador}</td>
+                    <td style="text-align: left;">
+                        <div class="inventory-list" id="inv-list-${index}"></div>
+                        <div class="inventory-add-container">
+                            <input type="text" class="input-new-mt" id="inv-input-${index}" placeholder="Ej: Lanzallamas" onkeypress="if(event.key === 'Enter') agregarMTInventario(${index})">
+                            <button class="btn-add-inventory" onclick="agregarMTInventario(${index})">Añadir MT</button>
+                        </div>
+                    </td>`;
+                tbodyInv.appendChild(trInv);
+
+                // PRÉSTAMOS MTS
+                let trPres = document.createElement('tr');
+                trPres.innerHTML = `<td style="font-weight:bold; color:var(--vortice-light);">${jugador}</td>`;
+                for(let i = 1; i <= 4; i++) {
+                    trPres.innerHTML += `<td class="td-dadas"><input class="mt-input" placeholder="Dado" onblur="colorizarMT(this)"><br><input class="mt-input" placeholder="Dado" onblur="colorizarMT(this)"></td>
+                                         <td class="td-recibidas"><input class="mt-input" placeholder="Recibido" onblur="colorizarMT(this)"><br><input class="mt-input" placeholder="Recibido" onblur="colorizarMT(this)"></td>`;
+                }
+                tbodyPres.appendChild(trPres);
+
+                // INTERCAMBIOS POKÉMON
+                let trPkmn = document.createElement('tr');
+                trPkmn.innerHTML = `<td style="font-weight:bold; color:var(--vortice-light);">${jugador}</td>`;
+                for(let i = 1; i <= 4; i++) {
+                    trPkmn.innerHTML += `<td class="td-dadas"><input class="pkmn-input" placeholder="Pokémon Dado" onblur="renderizarPkmn(this)"><div class="pkmn-display"></div></td>
+                                         <td class="td-recibidas"><input class="pkmn-input" placeholder="Pokémon Recibido" onblur="renderizarPkmn(this)"><div class="pkmn-display"></div></td>`;
+                }
+                tbodyPkmn.appendChild(trPkmn);
+            });
+        }
+
+        // ==========================================
+        // FUNCIONES DE API (MTS Y POKÉMON)
+        // ==========================================
+        async function agregarMTInventario(index) {
+            const input = document.getElementById(`inv-input-${index}`);
+            const moveName = input.value.trim();
+            if(!moveName) return;
+            document.getElementById(`inv-list-${index}`).appendChild(await crearElementoMovimiento(moveName));
+            input.value = '';
+        }
+
+        async function crearElementoMovimiento(moveOriginal) {
+            const li = document.createElement('div'); li.className = 'move-item';
+            let type = '???'; let color = '#666';
+            
+            // Usar traductor
+            const apiMove = traducirMovimiento(moveOriginal);
+
+            try {
+                if (cacheAPI.moves[apiMove]) { type = cacheAPI.moves[apiMove].type; color = cacheAPI.moves[apiMove].color; }
+                else {
+                    const res = await fetch(`https://pokeapi.co/api/v2/move/${apiMove}`);
+                    if(res.ok) {
+                        const mv = await res.json(); type = mv.type.name; color = typeColors[type] || '#666';
+                        cacheAPI.moves[apiMove] = { type, color };
+                    }
+                }
+            } catch(e) {}
+
+            li.innerHTML = `<span class="move-type-icon" style="background-color: ${color}">${type}</span><span class="move-name" contenteditable="true" style="color: white; margin-left: 5px; margin-right: 5px;">${moveOriginal}</span><button class="btn-small-del" style="font-size:11px;" onclick="this.parentElement.remove()">✖</button>`;
+            return li;
+        }
+
+        async function colorizarMT(inputEl) {
+            const moveOriginal = inputEl.value.trim();
+            if(!moveOriginal) { inputEl.style.color = 'white'; return; }
+            const apiMove = traducirMovimiento(moveOriginal);
+
+            try {
+                if (cacheAPI.moves[apiMove]) inputEl.style.color = cacheAPI.moves[apiMove].color;
+                else {
+                    const res = await fetch(`https://pokeapi.co/api/v2/move/${apiMove}`);
+                    if(res.ok) {
+                        const mv = await res.json(); const color = typeColors[mv.type.name] || 'var(--accent-green)';
+                        cacheAPI.moves[apiMove] = { type: mv.type.name, color: color };
+                        inputEl.style.color = color;
+                    }
+                }
+            } catch(e) {}
+        }
+
+        async function renderizarPkmn(inputEl) {
+            const pkmnName = inputEl.value.trim().toLowerCase().replace(/[^a-z0-9]/g, '-');
+            const displayDiv = inputEl.nextElementSibling;
+            if(!pkmnName) { displayDiv.innerHTML = ''; return; }
+
+            try {
+                const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${pkmnName}`);
+                if(res.ok) {
+                    const data = await res.json();
+                    const sprite = data.sprites.front_default || '';
+                    const typesHTML = data.types.map(t => `<span class="move-type-icon" style="background-color: ${typeColors[t.type.name]}">${t.type.name}</span>`).join(' ');
+                    displayDiv.innerHTML = `<img src="${sprite}" style="width:50px; height:50px; image-rendering:pixelated; margin-bottom:-5px;"><br>${typesHTML}`;
+                } else { displayDiv.innerHTML = `<span style="font-size:10px; color:#aaa;">(No encontrado)</span>`; }
+            } catch(e) { displayDiv.innerHTML = `<span style="font-size:10px; color:#aaa;">(Error API)</span>`; }
+        }
+    </script>
+</body>
+</html>
