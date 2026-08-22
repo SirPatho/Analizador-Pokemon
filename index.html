@@ -162,23 +162,19 @@
         const supaKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1eWFodml4aXdyam9yenBsc291Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczNjUyMDcsImV4cCI6MjEwMjk0MTIwN30.rw-3rRT4VDhP_TWDn3F_89ncwCppIVmfTNHcoHAgV78';
         const client = supabase.createClient(supaUrl, supaKey);
 
-        // =======================================================
-        // 1. EL SEMÁFORO DE SEGURIDAD (Bloqueo Inicial)
-        // =======================================================
         let isAppReady = false; 
         let autoSaveTimer;
         let isSaving = false;
         let pendingRemoteData = null;
+        
+        // PARCHE 1: Memoria del último guardado (Filtro Anti-Ecos)
+        let ultimoJsonGuardado = ""; 
 
-async function checkPass() {
+        async function checkPass() {
             const input = document.getElementById('pass-input').value.trim().toLowerCase();
             if (btoa(input) === "bmVidWxhIHZvcnRleCAyMA==") {
                 document.getElementById('login-error').style.display = 'none';
                 document.getElementById('loading-text').style.display = 'block';
-                
-                // AQUÍ INICIAMOS EL TRADUCTOR MASIVO
-                await cargarDiccionarioCompleto(); 
-                
                 await cargarDeLaNubeInicial();
                 suscribirseASincronizacion();
                 document.getElementById('login-overlay').style.display = 'none';
@@ -193,24 +189,19 @@ async function checkPass() {
             
             if(data && data.datos_json && data.datos_json !== "{}") {
                 aplicarHtml(data.datos_json);
+                ultimoJsonGuardado = data.datos_json; // Inicializamos la memoria
             }
             
-            // Genera las tablas en tu pantalla si no existen, PERO NO LAS GUARDA EN LA NUBE.
             const filasActuales = document.getElementById('tbody-inventario').querySelectorAll('tr').length;
             if (filasActuales < 20) {
                 generarTablas();
             }
 
-            // AHORA el sistema tiene permiso humano para guardar futuros cambios.
             isAppReady = true; 
         }
 
-        // =======================================================
-        // 2. AUTO-GUARDADO (Solo Humano)
-        // =======================================================
         document.addEventListener('input', function(e) {
-            if (!isAppReady) return; // Si el semáforo está rojo, rechaza cualquier guardado.
-            
+            if (!isAppReady) return; 
             if(e.target.tagName === 'INPUT' || e.target.isContentEditable) {
                 if(e.target.tagName === 'INPUT') e.target.setAttribute('value', e.target.value);
                 triggerAutoSave();
@@ -225,7 +216,7 @@ async function checkPass() {
         }
 
         async function guardarEnLaNubeSilencioso() {
-            if (!isAppReady) return; // Doble candado de seguridad
+            if (!isAppReady) return; 
             isSaving = true;
             document.getElementById('save-status').innerText = "Guardando...";
             const estadoUI = {
@@ -234,14 +225,15 @@ async function checkPass() {
                 ed: document.getElementById('episodio-delta').innerHTML, inv: document.getElementById('tbody-inventario').innerHTML,
                 pres: document.getElementById('tbody-prestamos').innerHTML, pkm: document.getElementById('tbody-pokemons').innerHTML
             };
-            const { error } = await client.from('vortice_data').upsert({ id: 1, datos_json: JSON.stringify(estadoUI) });
+            
+            const jsonStr = JSON.stringify(estadoUI);
+            ultimoJsonGuardado = jsonStr; // Registramos nuestra propia actualización
+
+            const { error } = await client.from('vortice_data').upsert({ id: 1, datos_json: jsonStr });
             isSaving = false;
             if(!error) { document.getElementById('save-status').innerText = "Sincronizado"; document.getElementById('save-icon').innerText = "🟢"; }
         }
 
-        // =======================================================
-        // 3. SINCRONIZACIÓN EN VIVO
-        // =======================================================
         function suscribirseASincronizacion() {
             client.channel('public:vortice_data').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'vortice_data' }, payload => {
                 if (!isSaving && payload.new && payload.new.datos_json) gestionarConflictosEnVivo(payload.new.datos_json);
@@ -249,12 +241,16 @@ async function checkPass() {
         }
 
         function gestionarConflictosEnVivo(nuevoJsonStr) {
+            // PARCHE CLAVE: Si la nube nos devuelve lo mismo que acabamos de guardar, ¡ignorarlo!
+            if (nuevoJsonStr === ultimoJsonGuardado) return; 
+
             const activeElem = document.activeElement;
             const isUserEditing = activeElem && (activeElem.tagName === 'INPUT' || activeElem.isContentEditable);
             if (isUserEditing) {
                 pendingRemoteData = nuevoJsonStr; mostrarToast("Tus compañeros hicieron cambios. Se aplicarán cuando termines de escribir.");
             } else {
                 aplicarHtml(nuevoJsonStr); mostrarToast("Base de datos actualizada en vivo 🔄");
+                ultimoJsonGuardado = nuevoJsonStr;
             }
         }
 
@@ -262,7 +258,10 @@ async function checkPass() {
             setTimeout(() => {
                 const activeElem = document.activeElement;
                 if (pendingRemoteData && activeElem.tagName !== 'INPUT' && !activeElem.isContentEditable) {
-                    aplicarHtml(pendingRemoteData); pendingRemoteData = null; mostrarToast("Cambios pendientes aplicados exitosamente.");
+                    aplicarHtml(pendingRemoteData); 
+                    ultimoJsonGuardado = pendingRemoteData; // Actualizamos memoria al aplicar
+                    pendingRemoteData = null; 
+                    mostrarToast("Cambios pendientes aplicados exitosamente.");
                 }
             }, 200);
         });
@@ -289,48 +288,38 @@ async function checkPass() {
             } catch(e) {}
         }
 
-        // =======================================================
-        // 4. MOTOR DE TRADUCCIÓN BILINGÜE MASIVO
-        // =======================================================
+        // Mega Diccionario Estático
         const typeColors = { normal: '#A8A77A', fire: '#EE8130', water: '#6390F0', electric: '#F7D02C', grass: '#7AC74C', ice: '#96D9D6', fighting: '#C22E28', poison: '#A33EA1', ground: '#E2BF65', flying: '#A98FF3', psychic: '#F95587', bug: '#A6B91A', rock: '#B6A136', ghost: '#735797', dragon: '#6F35FC', dark: '#705898', steel: '#B7B7CE', fairy: '#D685AD' };
-        
-        // Diccionario masivo con más de 150 ataques competitivos.
-        let dictES_EN = {}; 
-
-        // 2. Función que descarga los 900+ ataques oficiales de golpe al iniciar
-        async function cargarDiccionarioCompleto() {
-            try {
-                // Consulta GraphQL directa a la base de datos mundial de Pokémon
-                const query = `query { pokemon_v2_movename(where: {language_id: {_eq: 7}}) { name pokemon_v2_move { name } } }`;
-                const res = await fetch('https://beta.pokeapi.co/graphql/v1beta', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query })
-                });
-                
-                const { data } = await res.json();
-                
-                // Convertimos esa base de datos en nuestro traductor interno
-                data.pokemon_v2_movename.forEach(item => {
-                    const nombreEsp = normalizarTexto(item.name); // Ej: "golpe cuerpo"
-                    const nombreIng = item.pokemon_v2_move.name;  // Ej: "body-slam"
-                    dictES_EN[nombreEsp] = nombreIng;
-                });
-                
-            } catch (e) {
-                console.error("Fallo la conexión con el servidor maestro de PokéAPI", e);
-            }
-        }
+        const dictES_EN = { 
+            "proteccion":"protect", "retroceso":"return", "frustracion":"frustration", "doblefilo":"double-edge", "placaje":"tackle", "golpecuerpo":"body-slam", "campanacura":"heal-bell", "batido":"milk-drink", "amortiguador":"soft-boiled", "recuperacion":"recover", "dividedolor":"pain-split", "danzaespada":"swords-dance", "sorpresa":"fake-out", "velocidadextrema":"extreme-speed", "ataquerapido":"quick-attack", "sustituto":"substitute", "esfuerzo":"endeavor", "tambor":"belly-drum", "relevo":"baton-pass", "auxilio":"helping-hand", "señuelo":"follow-me", "transformacion":"transform", "canto":"sing", "sonambulo":"sleep-talk", "ronquido":"snore",
+            "lanzallamas":"flamethrower", "llamarada":"fire-blast", "fuegosagrado":"sacred-fire", "enviteigneo":"flare-blitz", "sofoco":"overheat", "fuegofatuo":"will-o-wisp", "diasoleado":"sunny-day", "nitrocarga":"flame-charge", "ondaignea":"heat-wave", "puñofuego":"fire-punch", "colmilloigneo":"fire-fang", "estallido":"eruption", "danzallama":"fiery-dance", "bombaignea":"magma-storm", "fuegomistico":"mystical-fire", "golpecalor":"heat-crash",
+            "hidrobomba":"hydro-pump", "surf":"surf", "escaldar":"scald", "cascada":"waterfall", "acuajet":"aqua-jet", "danzalluvia":"rain-dance", "acuacola":"aqua-tail", "pulsoprimigenio":"origin-pulse", "salpicar":"water-spout", "hidroariete":"liquidation", "conchafilo":"razor-shell", "acuaaro":"aqua-ring", "rayoburbuja":"bubble-beam", "buceo":"dive",
+            "rayo":"thunderbolt", "trueno":"thunder", "voltiocambio":"volt-switch", "chispa":"spark", "puñotrueno":"thunder-punch", "colmillorayo":"thunder-fang", "ondatrueno":"thunder-wave", "chispazo":"discharge", "rayocarga":"charge-beam", "placajeelectrico":"volt-tackle", "electrocañon":"zap-cannon", "electrotela":"electroweb", "mismodestino":"destiny-bond",
+            "gigadrenado":"giga-drain", "latigazo":"power-whip", "lluevehojas":"leaf-storm", "sintesis":"synthesis", "drenadoras":"leech-seed", "espora":"spore", "somnifero":"sleep-powder", "paralizador":"stun-spore", "rayosolar":"solar-beam", "bombagermen":"seed-bomb", "mazazo":"wood-hammer", "hojaaguda":"leaf-blade", "energiabola":"energy-ball", "silbato":"grass-whistle", "arraigo":"ingrain", "fuerzafloral":"petal-blizzard",
+            "rayohielo":"ice-beam", "ventisca":"blizzard", "chuzos":"icicle-crash", "cantohelado":"ice-shard", "puñohielo":"ice-punch", "colmillohielo":"ice-fang", "liofilizacion":"freeze-dry", "vientohielo":"icy-wind", "granizo":"hail", "nevasca":"blizzard", "aurora":"aurora-beam", "rayoaurora":"aurora-beam", "carambano":"icicle-spear", "alud":"avalanche",
+            "abocajarro":"close-combat", "fuerzabruta":"superpower", "ondacertera":"focus-blast", "patadasaltoalta":"high-jump-kick", "puñodrenaje":"drain-punch", "ultrapuño":"mach-punch", "esferaaural":"aura-sphere", "corpulencia":"bulk-up", "puntapie":"low-kick", "demolicion":"brick-break", "inversion":"reversal", "anticipo":"detect", "espalda":"vital-throw", "ondavacio":"vacuum-wave", "llavegiro":"submission", "tirovital":"vital-throw", "palmeo":"force-palm", "ganchoalto":"sky-uppercut",
+            "puyanociva":"poison-jab", "bombalodo":"sludge-bomb", "ondatoxica":"sludge-wave", "toxico":"toxic", "puastoxicas":"toxic-spikes", "colmilloveneno":"poison-fang", "cargatoxica":"venoshock", "gascorrosivo":"corrosive-gas", "lanzamugre":"gunk-shot", "picotazoveneno":"poison-sting", "polvoveneno":"poison-powder", "acido":"acid", "bombaacida":"acid-spray",
+            "terremoto":"earthquake", "tierraviva":"earth-power", "terratemblor":"bulldoze", "fuerzaequina":"high-horsepower", "puas":"spikes", "tramparocas":"stealth-rock", "pisotonpataleta":"stomping-tantrum", "buclearena":"sand-tomb", "magnitud":"magnitude", "fisura":"fissure", "huesomerang":"bone-club", "ataqueoseo":"bone-rush",
+            "pajaroosado":"brave-bird", "tajoaereo":"air-slash", "vendaval":"hurricane", "respiro":"roost", "despejar":"defog", "acrobata":"acrobatics", "golpeaereo":"aerial-ace", "picotaladro":"drill-peck", "vientoafin":"tailwind", "vuelo":"fly", "picocañon":"beak-blast", "aireafilado":"razor-wind", "ataqueala":"wing-attack",
+            "psiquico":"psychic", "psicocarga":"psyshock", "cabezazozen":"zen-headbutt", "pazmental":"calm-mind", "barrera":"barrier", "pantalladeluz":"light-screen", "reflejo":"reflect", "espacioraro":"trick-room", "mofa":"taunt", "truco":"trick", "capamagica":"magic-coat", "premolicion":"future-sight", "agilidad":"agility", "masacosmica":"cosmic-power", "hipnosis":"hypnosis", "comesueños":"dream-eater", "paranormal":"extrasensory",
+            "idayvuelta":"u-turn", "zumbido":"bug-buzz", "tijerax":"x-scissor", "chupavidas":"leech-life", "redviscosa":"sticky-web", "polvoira":"rage-powder", "picadura":"bug-bite", "megacuerno":"megahorn", "pinmisil":"pin-missile", "estoicismo":"struggle-bug", "cortefuria":"fury-cutter", "acoso":"infestation",
+            "avalancha":"rock-slide", "rocaafilada":"stone-edge", "tumbarocas":"rock-tomb", "joyadeluz":"power-gem", "pedrada":"rock-blast", "tormentadearena":"sandstorm", "rompecoraza":"shell-smash", "testarazo":"head-smash", "poderpasado":"ancient-power", "lanzarrocas":"rock-throw", "pulimento":"rock-polish",
+            "bolasombra":"shadow-ball", "garraumbria":"shadow-claw", "sombravil":"shadow-sneak", "infortunio":"hex", "maldicion":"curse", "golpefantasma":"phantom-force", "rayoconfuso":"confuse-ray", "vientoaciago":"ominous-wind", "tinieblas":"night-shade", "pesadilla":"nightmare", "poltergeist":"poltergeist",
+            "garradragon":"dragon-claw", "pulsodragon":"dragon-pulse", "cometadraco":"draco-meteor", "enfado":"outrage", "danzadragon":"dragon-dance", "cargadragon":"dragon-rush", "coladragon":"dragon-tail", "furiadragon":"dragon-rage", "dragoaliento":"dragon-breath", "cortevacio":"spacial-rend", "distorsion":"roar-of-time",
+            "desarme":"knock-off", "golpebajo":"sucker-punch", "juegosucio":"foul-play", "pulsoumbrio":"dark-pulse", "triturar":"crunch", "maquinacion":"nasty-plot", "alarido":"snarl", "tajoumbrio":"night-slash", "persecucion":"pursuit", "mordisco":"bite", "finta":"feint-attack", "ladron":"thief", "embargo":"embargo", "lanzamiento":"fling", "pulsonoche":"night-daze", "brechanegra":"dark-void",
+            "focoresplandor":"flash-cannon", "cabezadehierro":"iron-head", "puñobala":"bullet-punch", "girobola":"gyro-ball", "cuerpopesado":"heavy-slam", "defensaferrea":"iron-defense", "cambiodemarcha":"shift-gear", "aligerar":"autotomize", "escudoreal":"kings-shield", "colaferrea":"iron-tail", "garrametal":"metal-claw", "aladeacero":"steel-wing",
+            "fuerzalunar":"moonblast", "carantoña":"play-rough", "brillomagico":"dazzling-gleam", "besodrenaje":"draining-kiss", "geocontrol":"geomancy", "luzlunar":"moonlight", "campodeniebla":"misty-terrain", "encanto":"charm", "besodulce":"sweet-kiss", "ojitostiernos":"baby-doll-eyes"
+        };
         const cacheAPI = { pokemon: {}, moves: {} };
         const jugadoresSector = ["Zihul", "Parce", "Miqui", "Sir Patho", "Sergio", "Josema", "Zanenuss", "Heartless", "Yoru", "Yomi", "Alastor", "Jynloas", "Rodry", "Necrox", "Chrismolli", "Stefano", "Brix", "Bullet", "Desca", "Ryutatsu"];
 
-        function normalizarTexto(txt) { return txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim(); }
-        
-        // El motor de traducción primero busca en nuestro diccionario masivo.
-        // Si no lo encuentra, asume que ya lo escribiste en inglés.
+        // Normalizador destructivo (junta todas las palabras y borra signos/tildes)
+        function normalizarTexto(txt) { 
+            return txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, ''); 
+        }
         function traducirMovimiento(movEsp) { 
             const norm = normalizarTexto(movEsp); 
-            return dictES_EN[norm] || norm.replace(/[^a-z0-9]/g, '-'); 
+            return dictES_EN[norm] || movEsp.toLowerCase().trim().replace(/[^a-z0-9]/g, '-'); 
         }
 
         document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -423,10 +412,21 @@ async function checkPass() {
             });
         }
 
+        // PARCHE 2: Limpieza Inmediata para evitar clicks repetidos
         async function agregarMTInventario(index) {
-            const input = document.getElementById(`inv-input-${index}`); const moveName = input.value.trim(); if(!moveName) return;
-            document.getElementById(`inv-list-${index}`).appendChild(await crearElementoMovimiento(moveName));
-            input.value = ''; input.setAttribute('value', ''); triggerAutoSave(); 
+            const input = document.getElementById(`inv-input-${index}`); 
+            const moveName = input.value.trim(); 
+            if(!moveName) return;
+            
+            // Borra la casilla AL INSTANTE para que puedas escribir el siguiente ataque
+            input.value = ''; 
+            input.setAttribute('value', ''); 
+            
+            // Espera el color y lo dibuja
+            const elemento = await crearElementoMovimiento(moveName);
+            document.getElementById(`inv-list-${index}`).appendChild(elemento);
+            
+            triggerAutoSave(); 
         }
 
         async function crearElementoMovimiento(moveOriginal) {
