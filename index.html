@@ -167,7 +167,7 @@
         // 1. SISTEMA DE SEGURIDAD CRIPTOGRÁFICA (Hashing XOR)
         // =======================================================
         async function checkPass() {
-            const input = document.getElementById('pass-input').value;
+            const input = document.getElementById('pass-input').value.trim();
             // Array criptográfico (El texto original fue destruido)
             const lockArray = [20, 47, 40, 63, 38, 11, 58, 12, 37, 40, 30, 47, 34, 58, 104, 106];
             let isValid = input.length === lockArray.length;
