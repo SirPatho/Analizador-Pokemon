@@ -166,12 +166,19 @@
         // =======================================================
         // 1. SISTEMA DE SEGURIDAD CRIPTOGRÁFICA (Hashing XOR)
         // =======================================================
-async function checkPass() {
-            // El .trim() quita espacios accidentales al inicio o final
-            const input = document.getElementById('pass-input').value.trim();
+        async function checkPass() {
+            const input = document.getElementById('pass-input').value;
+            // Array criptográfico (El texto original fue destruido)
+            const lockArray = [20, 47, 40, 63, 38, 11, 58, 12, 37, 40, 30, 47, 34, 58, 104, 106];
+            let isValid = input.length === lockArray.length;
             
-            // La contraseña está codificada en Base64. Ningún rival verá "Nebula Vortex 20"
-            if (btoa(input) === "TmVidWxhIFZvcnRleCAyMA==") {
+            if (isValid) {
+                for (let i = 0; i < input.length; i++) {
+                    if ((input.charCodeAt(i) ^ 90) !== lockArray[i]) { isValid = false; break; }
+                }
+            }
+
+            if (isValid) {
                 document.getElementById('login-error').style.display = 'none';
                 document.getElementById('loading-text').style.display = 'block';
                 await cargarDeLaNubeInicial();
