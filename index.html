@@ -170,11 +170,15 @@
         let isSaving = false;
         let pendingRemoteData = null;
 
-        async function checkPass() {
+async function checkPass() {
             const input = document.getElementById('pass-input').value.trim().toLowerCase();
             if (btoa(input) === "bmVidWxhIHZvcnRleCAyMA==") {
                 document.getElementById('login-error').style.display = 'none';
                 document.getElementById('loading-text').style.display = 'block';
+                
+                // AQUÍ INICIAMOS EL TRADUCTOR MASIVO
+                await cargarDiccionarioCompleto(); 
+                
                 await cargarDeLaNubeInicial();
                 suscribirseASincronizacion();
                 document.getElementById('login-overlay').style.display = 'none';
@@ -291,31 +295,32 @@
         const typeColors = { normal: '#A8A77A', fire: '#EE8130', water: '#6390F0', electric: '#F7D02C', grass: '#7AC74C', ice: '#96D9D6', fighting: '#C22E28', poison: '#A33EA1', ground: '#E2BF65', flying: '#A98FF3', psychic: '#F95587', bug: '#A6B91A', rock: '#B6A136', ghost: '#735797', dragon: '#6F35FC', dark: '#705898', steel: '#B7B7CE', fairy: '#D685AD' };
         
         // Diccionario masivo con más de 150 ataques competitivos.
-        const dictES_EN = { 
-            "lanzallamas": "flamethrower", "rayo": "thunderbolt", "terremoto": "earthquake", "rayo hielo": "ice-beam", "proteccion": "protect", 
-            "toxico": "toxic", "ida y vuelta": "u-turn", "voltiocambio": "volt-switch", "fuego fatuo": "will-o-wisp", "onda trueno": "thunder-wave", 
-            "trampa rocas": "stealth-rock", "danza espada": "swords-dance", "pajaro osado": "brave-bird", "a bocajarro": "close-combat", 
-            "psiquico": "psychic", "bola sombra": "shadow-ball", "fuerza bruta": "superpower", "desarme": "knock-off", "sorpresa": "fake-out", 
-            "escaldar": "scald", "respiro": "roost", "recuperacion": "recover", "fuego sagrado": "sacred-fire", "brillo magico": "dazzling-gleam",
-            "golpe cuerpo": "body-slam", "auxilio": "helping-hand", "espora": "spore", "polvo ira": "rage-powder", "señuelo": "follow-me",
-            "viento afin": "tailwind", "espacio raro": "trick-room", "fuerza lunar": "moonblast", "carantoña": "play-rough", "gigadrenado": "giga-drain",
-            "latigazo": "power-whip", "lluevehojas": "leaf-storm", "hidrobomba": "hydro-pump", "cascada": "waterfall", "acua jet": "aqua-jet",
-            "canto helado": "ice-shard", "chuzos": "icicle-crash", "puño hielo": "ice-punch", "puño trueno": "thunder-punch", "puño fuego": "fire-punch",
-            "envite igneo": "flare-blitz", "triturar": "crunch", "golpe bajo": "sucker-punch", "juego sucio": "foul-play", "pulso umbrio": "dark-pulse",
-            "foco resplandor": "flash-cannon", "cabeza de hierro": "iron-head", "puño bala": "bullet-punch", "terratemblor": "bulldoze",
-            "fuerza equina": "high-horsepower", "tierra viva": "earth-power", "roca afilada": "stone-edge", "avalancha": "rock-slide",
-            "tumba rocas": "rock-tomb", "joya de luz": "power-gem", "zumbido": "bug-buzz", "tijera x": "x-scissor", "chupavidas": "leech-life",
-            "puya nociva": "poison-jab", "bomba lodo": "sludge-bomb", "onda toxica": "sludge-wave", "pico taladro": "drill-peck",
-            "vendaval": "hurricane", "tajo aereo": "air-slash", "acrobata": "acrobatics", "cabezazo zen": "zen-headbutt", "psicocarga": "psyshock",
-            "pulso dragon": "dragon-pulse", "garra dragon": "dragon-claw", "cometa draco": "draco-meteor", "enfado": "outrage",
-            "bola voltio": "electro-ball", "chispazo": "discharge", "trueno": "thunder", "patada salto alta": "high-jump-kick",
-            "esfera aural": "aura-sphere", "onda certera": "focus-blast", "drenadoras": "leech-seed", "sustituto": "substitute",
-            "maquinacion": "nasty-plot", "paz mental": "calm-mind", "corpulencia": "bulk-up", "danza dragon": "dragon-dance",
-            "rompecoraza": "shell-smash", "viento hielo": "icy-wind", "mofa": "taunt", "fuego mistico": "mystical-fire",
-            "alarido": "snarl", "alivio": "heal-bell", "campana cura": "heal-bell", "despejar": "defog", "giro rapido": "rapid-spin",
-            "niebla": "haze", "remolino": "whirlwind", "rugido": "roar", "mismo destino": "destiny-bond", "legado": "memento",
-            "pantalla de luz": "light-screen", "reflejo": "reflect", "velo aurora": "aurora-veil", "beso drenaje": "draining-kiss"
-        };
+        let dictES_EN = {}; 
+
+        // 2. Función que descarga los 900+ ataques oficiales de golpe al iniciar
+        async function cargarDiccionarioCompleto() {
+            try {
+                // Consulta GraphQL directa a la base de datos mundial de Pokémon
+                const query = `query { pokemon_v2_movename(where: {language_id: {_eq: 7}}) { name pokemon_v2_move { name } } }`;
+                const res = await fetch('https://beta.pokeapi.co/graphql/v1beta', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                
+                const { data } = await res.json();
+                
+                // Convertimos esa base de datos en nuestro traductor interno
+                data.pokemon_v2_movename.forEach(item => {
+                    const nombreEsp = normalizarTexto(item.name); // Ej: "golpe cuerpo"
+                    const nombreIng = item.pokemon_v2_move.name;  // Ej: "body-slam"
+                    dictES_EN[nombreEsp] = nombreIng;
+                });
+                
+            } catch (e) {
+                console.error("Fallo la conexión con el servidor maestro de PokéAPI", e);
+            }
+        }
         const cacheAPI = { pokemon: {}, moves: {} };
         const jugadoresSector = ["Zihul", "Parce", "Miqui", "Sir Patho", "Sergio", "Josema", "Zanenuss", "Heartless", "Yoru", "Yomi", "Alastor", "Jynloas", "Rodry", "Necrox", "Chrismolli", "Stefano", "Brix", "Bullet", "Desca", "Ryutatsu"];
 
