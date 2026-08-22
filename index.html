@@ -6,7 +6,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
-            var(--bg-base): #000000; --bg-panel: rgba(20, 15, 25, 0.95); --bg-card: rgba(30, 25, 40, 0.9);
+            --bg-base: #000000; --bg-panel: rgba(20, 15, 25, 0.95); --bg-card: rgba(30, 25, 40, 0.9);
             --vortice-primary: #9d4edd; --vortice-light: #c77dff; --vortice-dark: #3c096c;
             --accent-red: #ff4d4d; --accent-green: #2ed573; --accent-blue: #1e90ff; --text-main: #e0e0e0;
         }
@@ -50,7 +50,7 @@
         .tab-content { display: none; } .tab-content.active { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; align-items: start; }
         #mercado-mts.active { display: block; } 
 
-        /* CSS ENTRENADORES Y TABLAS (Igual al anterior) */
+        /* CSS ENTRENADORES Y TABLAS */
         .player-accordion { background-color: rgba(20, 15, 25, 0.95); border-radius: 8px; border: 1px solid #3c096c; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.6); }
         .player-header { background-color: #111; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-bottom: 1px solid #3c096c; }
         .player-name { font-size: 16px; font-weight: bold; color: #c77dff; text-transform: uppercase; }
@@ -73,6 +73,8 @@
         .sheet-btn { background-color: #111; color: #aaa; border: 1px solid #444; padding: 8px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         .sheet-btn.active { background-color: #9d4edd; color: white; border-color: #c77dff; }
         .sheet-content { display: none; overflow-x: auto; } .sheet-content.active { display: block; }
+        
+        /* TABLAS DE EXCEL */
         .mt-table { width: 100%; border-collapse: collapse; background-color: rgba(20, 15, 25, 0.95); font-size: 12px; min-width: 900px; margin-bottom: 30px; }
         .mt-table th, .mt-table td { border: 1px solid #444; padding: 8px; text-align: center; vertical-align: middle; }
         .mt-table th { background-color: #111; color: #c77dff; }
@@ -164,12 +166,10 @@
         const client = supabase.createClient(supaUrl, supaKey);
 
         // =======================================================
-        // 1. SISTEMA DE SEGURIDAD CRIPTOGRÁFICA (Hashing XOR)
+        // 1. SEGURIDAD (La que te funcionó perfecto)
         // =======================================================
-async function checkPass() {
-            // Toma la contraseña, quita espacios extra y la convierte a minúsculas
+        async function checkPass() {
             const input = document.getElementById('pass-input').value.trim().toLowerCase();
-            
             if (btoa(input) === "bmVidWxhIHZvcnRleCAyMA==") {
                 document.getElementById('login-error').style.display = 'none';
                 document.getElementById('loading-text').style.display = 'block';
@@ -183,13 +183,12 @@ async function checkPass() {
         }
 
         // =======================================================
-        // 2. SISTEMA DE AUTO-GUARDADO (Debounce)
+        // 2. AUTO-GUARDADO
         // =======================================================
         let autoSaveTimer;
         let isSaving = false;
         let pendingRemoteData = null;
 
-        // Actualizar valores de input al vuelo para el HTML
         document.addEventListener('input', function(e) {
             if(e.target.tagName === 'INPUT' || e.target.isContentEditable) {
                 if(e.target.tagName === 'INPUT') e.target.setAttribute('value', e.target.value);
@@ -201,117 +200,100 @@ async function checkPass() {
             clearTimeout(autoSaveTimer);
             document.getElementById('save-status').innerText = "✏️ Escribiendo...";
             document.getElementById('save-icon').innerText = "⏳";
-            autoSaveTimer = setTimeout(() => {
-                guardarEnLaNubeSilencioso();
-            }, 1500); // Guarda 1.5 seg después de dejar de teclear
+            autoSaveTimer = setTimeout(() => { guardarEnLaNubeSilencioso(); }, 1500);
         }
 
         async function guardarEnLaNubeSilencioso() {
             isSaving = true;
             document.getElementById('save-status').innerText = "Guardando en la nube...";
-            
             const estadoUI = {
-                t1: document.getElementById('tramo-1').innerHTML,
-                t2: document.getElementById('tramo-2').innerHTML,
-                t3: document.getElementById('tramo-3').innerHTML,
-                t4: document.getElementById('tramo-4').innerHTML,
-                ed: document.getElementById('episodio-delta').innerHTML,
-                inv: document.getElementById('tbody-inventario').innerHTML,
-                pres: document.getElementById('tbody-prestamos').innerHTML,
-                pkm: document.getElementById('tbody-pokemons').innerHTML
+                t1: document.getElementById('tramo-1').innerHTML, t2: document.getElementById('tramo-2').innerHTML,
+                t3: document.getElementById('tramo-3').innerHTML, t4: document.getElementById('tramo-4').innerHTML,
+                ed: document.getElementById('episodio-delta').innerHTML, inv: document.getElementById('tbody-inventario').innerHTML,
+                pres: document.getElementById('tbody-prestamos').innerHTML, pkm: document.getElementById('tbody-pokemons').innerHTML
             };
-
             const { error } = await client.from('vortice_data').update({ datos_json: JSON.stringify(estadoUI) }).eq('id', 1);
-            
             isSaving = false;
-            if(!error) { 
-                document.getElementById('save-status').innerText = "Sincronizado y seguro";
-                document.getElementById('save-icon').innerText = "🟢";
-            }
+            if(!error) { document.getElementById('save-status').innerText = "Sincronizado y seguro"; document.getElementById('save-icon').innerText = "🟢"; }
         }
 
         // =======================================================
-        // 3. SINCRONIZACIÓN EN TIEMPO REAL (Supabase Realtime)
+        // 3. SINCRONIZACIÓN Y CARGA INICIAL CON SEGURO ANTI-VACÍOS
         // =======================================================
         function suscribirseASincronizacion() {
-            client.channel('public:vortice_data')
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'vortice_data' }, payload => {
-                // Si la actualización vino de OTRA persona (no fuimos nosotros guardando recién)
-                if (!isSaving && payload.new && payload.new.datos_json) {
-                    gestionarConflictosEnVivo(payload.new.datos_json);
-                }
+            client.channel('public:vortice_data').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'vortice_data' }, payload => {
+                if (!isSaving && payload.new && payload.new.datos_json) gestionarConflictosEnVivo(payload.new.datos_json);
             }).subscribe();
         }
 
         function gestionarConflictosEnVivo(nuevoJsonStr) {
             const activeElem = document.activeElement;
             const isUserEditing = activeElem && (activeElem.tagName === 'INPUT' || activeElem.isContentEditable);
-            
             if (isUserEditing) {
-                // El usuario está tecleando. Guardamos los datos de los compañeros en memoria para no interrumpirlo.
-                pendingRemoteData = nuevoJsonStr;
-                mostrarToast("Tus compañeros hicieron cambios. Se aplicarán cuando termines de escribir.");
+                pendingRemoteData = nuevoJsonStr; mostrarToast("Tus compañeros hicieron cambios. Se aplicarán cuando termines de escribir.");
             } else {
-                // El usuario no está haciendo nada, actualizamos la pantalla al instante.
-                aplicarHtml(nuevoJsonStr);
-                mostrarToast("Base de datos actualizada en vivo 🔄");
+                aplicarHtml(nuevoJsonStr); mostrarToast("Base de datos actualizada en vivo 🔄");
             }
         }
 
-        // Cuando el usuario hace clic fuera de la casilla, aplicamos los datos pendientes
         document.addEventListener('focusout', () => {
             setTimeout(() => {
                 const activeElem = document.activeElement;
                 if (pendingRemoteData && activeElem.tagName !== 'INPUT' && !activeElem.isContentEditable) {
-                    aplicarHtml(pendingRemoteData);
-                    pendingRemoteData = null;
-                    mostrarToast("Cambios pendientes aplicados exitosamente.");
+                    aplicarHtml(pendingRemoteData); pendingRemoteData = null; mostrarToast("Cambios pendientes aplicados exitosamente.");
                 }
             }, 200);
         });
 
         function mostrarToast(mensaje) {
-            const toast = document.getElementById('toast-notification');
-            toast.innerText = mensaje;
-            toast.style.display = 'block';
-            setTimeout(() => { toast.style.display = 'none'; }, 4000);
+            const toast = document.getElementById('toast-notification'); toast.innerText = mensaje;
+            toast.style.display = 'block'; setTimeout(() => { toast.style.display = 'none'; }, 4000);
         }
 
         async function cargarDeLaNubeInicial() {
             const { data } = await client.from('vortice_data').select('datos_json').eq('id', 1).single();
             if(data && data.datos_json && data.datos_json !== "{}") {
                 aplicarHtml(data.datos_json);
-            } else {
-                generarTablas(); // Genera la base si está vacía
+            }
+            
+            // EL SEGURO AGRESIVO: Si hay menos de 20 filas (jugadores faltantes), se regeneran las tablas.
+            const filasActuales = document.getElementById('tbody-inventario').querySelectorAll('tr').length;
+            if (filasActuales < 20) {
+                generarTablas();
+                triggerAutoSave();
             }
         }
 
         function aplicarHtml(jsonStr) {
             try {
                 const ui = JSON.parse(jsonStr);
-                if(ui.t1 !== undefined) {
+                if(ui.inv !== undefined) {
                     document.getElementById('tramo-1').innerHTML = ui.t1; document.getElementById('tramo-2').innerHTML = ui.t2;
                     document.getElementById('tramo-3').innerHTML = ui.t3; document.getElementById('tramo-4').innerHTML = ui.t4;
                     document.getElementById('episodio-delta').innerHTML = ui.ed; document.getElementById('tbody-inventario').innerHTML = ui.inv;
                     document.getElementById('tbody-prestamos').innerHTML = ui.pres; document.getElementById('tbody-pokemons').innerHTML = ui.pkm;
                     
                     document.querySelectorAll('.player-header').forEach(header => {
-                        const newHeader = header.cloneNode(true);
-                        header.parentNode.replaceChild(newHeader, header);
-                        newHeader.addEventListener('click', function(e) {
-                            if (e.target.classList.contains('toggle-stop')) return;
-                            const body = this.nextElementSibling; body.style.display = (body.style.display === 'none') ? 'block' : 'none';
-                        });
+                        const newHeader = header.cloneNode(true); header.parentNode.replaceChild(newHeader, header);
+                        newHeader.addEventListener('click', function(e) { if (e.target.classList.contains('toggle-stop')) return; const body = this.nextElementSibling; body.style.display = (body.style.display === 'none') ? 'block' : 'none'; });
                     });
                 }
             } catch(e) { console.error("Error leyendo DB"); }
         }
 
         // =======================================================
-        // LÓGICA DE DICCIONARIOS Y POKÉMON (Conservada Intacta)
+        // DICCIONARIOS EXCEL BILINGÜE
         // =======================================================
         const typeColors = { normal: '#A8A77A', fire: '#EE8130', water: '#6390F0', electric: '#F7D02C', grass: '#7AC74C', ice: '#96D9D6', fighting: '#C22E28', poison: '#A33EA1', ground: '#E2BF65', flying: '#A98FF3', psychic: '#F95587', bug: '#A6B91A', rock: '#B6A136', ghost: '#735797', dragon: '#6F35FC', dark: '#705898', steel: '#B7B7CE', fairy: '#D685AD' };
-        const dictES_EN = { "lanzallamas": "flamethrower", "rayo": "thunderbolt", "terremoto": "earthquake", "rayo hielo": "ice-beam", "proteccion": "protect", "toxico": "toxic", "ida y vuelta": "u-turn", "voltiocambio": "volt-switch", "fuego fatuo": "will-o-wisp", "onda trueno": "thunder-wave", "trampa rocas": "stealth-rock", "danza espada": "swords-dance", "pajaro osado": "brave-bird", "a bocajarro": "close-combat", "psiquico": "psychic", "bola sombra": "shadow-ball", "fuerza bruta": "superpower" };
+        
+        // Diccionario extendido (El inglés funciona nativamente sin necesidad de estar aquí)
+        const dictES_EN = { 
+            "lanzallamas": "flamethrower", "rayo": "thunderbolt", "terremoto": "earthquake", "rayo hielo": "ice-beam", "proteccion": "protect", 
+            "toxico": "toxic", "ida y vuelta": "u-turn", "voltiocambio": "volt-switch", "fuego fatuo": "will-o-wisp", "onda trueno": "thunder-wave", 
+            "trampa rocas": "stealth-rock", "danza espada": "swords-dance", "pajaro osado": "brave-bird", "a bocajarro": "close-combat", 
+            "psiquico": "psychic", "bola sombra": "shadow-ball", "fuerza bruta": "superpower", "desarme": "knock-off", "sorpresa": "fake-out", 
+            "escaldar": "scald", "respiro": "roost", "recuperacion": "recover", "fuego sagrado": "sacred-fire", "brillo magico": "dazzling-gleam"
+        };
         const cacheAPI = { pokemon: {}, moves: {} };
         const jugadoresSector = ["Zihul", "Parce", "Miqui", "Sir Patho", "Sergio", "Josema", "Zanenuss", "Heartless", "Yoru", "Yomi", "Alastor", "Jynloas", "Rodry", "Necrox", "Chrismolli", "Stefano", "Brix", "Bullet", "Desca", "Ryutatsu"];
 
@@ -320,30 +302,23 @@ async function checkPass() {
 
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                btn.classList.add('active');
-                const targetId = btn.getAttribute('data-target'); document.getElementById(targetId).classList.add('active');
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active'); const targetId = btn.getAttribute('data-target'); document.getElementById(targetId).classList.add('active');
                 document.getElementById('main-controls').style.display = (targetId === 'mercado-mts') ? 'none' : 'flex';
             });
         });
         document.querySelectorAll('.sheet-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                document.querySelectorAll('.sheet-btn').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.sheet-content').forEach(c => c.classList.remove('active'));
+                document.querySelectorAll('.sheet-btn').forEach(b => b.classList.remove('active')); document.querySelectorAll('.sheet-content').forEach(c => c.classList.remove('active'));
                 btn.classList.add('active'); document.getElementById(btn.getAttribute('data-sheet')).classList.add('active');
             });
         });
 
-        function crearEntrenadorManual() {
-            const nombre = prompt("Ingresa el nombre del entrenador (Ej: Zihul):");
-            if (nombre && nombre.trim() !== "") { inyectarJugador({ name: nombre.trim().toUpperCase(), team: {} }); triggerAutoSave(); }
-        }
+        function crearEntrenadorManual() { const nombre = prompt("Ingresa el nombre del entrenador (Ej: Zihul):"); if (nombre && nombre.trim() !== "") { inyectarJugador({ name: nombre.trim().toUpperCase(), team: {} }); triggerAutoSave(); } }
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const files = e.target.files; if (files.length === 0) return;
             for (let file of files) { const text = await file.text(); procesarReplay(text); }
-            e.target.value = '';
-            triggerAutoSave();
+            e.target.value = ''; triggerAutoSave();
         });
 
         function procesarReplay(html) {
@@ -414,14 +389,31 @@ async function checkPass() {
             });
         }
 
-        async function agregarMTInventario(index) { const input = document.getElementById(`inv-input-${index}`); const moveName = input.value.trim(); if(!moveName) return; document.getElementById(`inv-list-${index}`).appendChild(await crearElementoMovimiento(moveName)); input.value = ''; triggerAutoSave(); }
+        async function agregarMTInventario(index) {
+            const input = document.getElementById(`inv-input-${index}`); const moveName = input.value.trim(); if(!moveName) return;
+            document.getElementById(`inv-list-${index}`).appendChild(await crearElementoMovimiento(moveName));
+            input.value = ''; input.setAttribute('value', ''); triggerAutoSave(); 
+        }
+
         async function crearElementoMovimiento(moveOriginal) {
             const li = document.createElement('div'); li.className = 'move-item'; let type = '???'; let color = '#666'; const apiMove = traducirMovimiento(moveOriginal);
             try { if (cacheAPI.moves[apiMove]) { type = cacheAPI.moves[apiMove].type; color = cacheAPI.moves[apiMove].color; } else { const res = await fetch(`https://pokeapi.co/api/v2/move/${apiMove}`); if(res.ok) { const mv = await res.json(); type = mv.type.name; color = typeColors[type] || '#666'; cacheAPI.moves[apiMove] = { type, color }; } } } catch(e) {}
             li.innerHTML = `<span class="move-type-icon" style="background-color: ${color}">${type}</span><span class="move-name" contenteditable="true" style="color: white; margin-left: 5px; margin-right: 5px;">${moveOriginal}</span><button class="btn-small-del" style="font-size:11px;" onclick="this.parentElement.remove(); triggerAutoSave();">✖</button>`; return li;
         }
-        async function colorizarMT(inputEl) { const moveOriginal = inputEl.value.trim(); if(!moveOriginal) { inputEl.style.color = 'white'; return; } const apiMove = traducirMovimiento(moveOriginal); try { if (cacheAPI.moves[apiMove]) inputEl.style.color = cacheAPI.moves[apiMove].color; else { const res = await fetch(`https://pokeapi.co/api/v2/move/${apiMove}`); if(res.ok) { const mv = await res.json(); const color = typeColors[mv.type.name] || '#2ed573'; cacheAPI.moves[apiMove] = { type: mv.type.name, color: color }; inputEl.style.color = color; } } } catch(e) {} }
-        async function renderizarPkmn(inputEl) { const pkmnName = inputEl.value.trim().toLowerCase().replace(/[^a-z0-9]/g, '-'); const displayDiv = inputEl.nextElementSibling; if(!pkmnName) { displayDiv.innerHTML = ''; return; } try { const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${pkmnName}`); if(res.ok) { const data = await res.json(); const sprite = data.sprites.front_default || ''; const typesHTML = data.types.map(t => `<span class="move-type-icon" style="background-color: ${typeColors[t.type.name]}">${t.type.name}</span>`).join(' '); displayDiv.innerHTML = `<img src="${sprite}" style="width:50px; height:50px; image-rendering:pixelated; margin-bottom:-5px;"><br>${typesHTML}`; } else { displayDiv.innerHTML = `<span style="font-size:10px; color:#aaa;">(No encontrado)</span>`; } } catch(e) { displayDiv.innerHTML = `<span style="font-size:10px; color:#aaa;">(Error API)</span>`; } }
+
+        async function colorizarMT(inputEl) {
+            const moveOriginal = inputEl.value.trim(); if(!moveOriginal) { inputEl.style.color = 'white'; inputEl.setAttribute('value', ''); triggerAutoSave(); return; }
+            const apiMove = traducirMovimiento(moveOriginal);
+            try { if (cacheAPI.moves[apiMove]) inputEl.style.color = cacheAPI.moves[apiMove].color; else { const res = await fetch(`https://pokeapi.co/api/v2/move/${apiMove}`); if(res.ok) { const mv = await res.json(); const color = typeColors[mv.type.name] || '#2ed573'; cacheAPI.moves[apiMove] = { type: mv.type.name, color: color }; inputEl.style.color = color; } } } catch(e) {}
+            inputEl.setAttribute('value', inputEl.value); triggerAutoSave(); 
+        }
+
+        async function renderizarPkmn(inputEl) {
+            const pkmnName = inputEl.value.trim().toLowerCase().replace(/[^a-z0-9]/g, '-'); const displayDiv = inputEl.nextElementSibling;
+            if(!pkmnName) { displayDiv.innerHTML = ''; inputEl.setAttribute('value', ''); triggerAutoSave(); return; }
+            try { const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${pkmnName}`); if(res.ok) { const data = await res.json(); const sprite = data.sprites.front_default || ''; const typesHTML = data.types.map(t => `<span class="move-type-icon" style="background-color: ${typeColors[t.type.name]}">${t.type.name}</span>`).join(' '); displayDiv.innerHTML = `<img src="${sprite}" style="width:50px; height:50px; image-rendering:pixelated; margin-bottom:-5px;"><br>${typesHTML}`; } else { displayDiv.innerHTML = `<span style="font-size:10px; color:#aaa;">(No encontrado)</span>`; } } catch(e) { displayDiv.innerHTML = `<span style="font-size:10px; color:#aaa;">(Error API)</span>`; }
+            inputEl.setAttribute('value', inputEl.value); triggerAutoSave(); 
+        }
     </script>
 </body>
 </html>
