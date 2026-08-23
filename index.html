@@ -65,43 +65,16 @@
         .move-list { list-style: none; padding: 0; margin: 8px 0; min-height: 20px;}
         
         /* DISEÑO CHIP PARA LOS ATAQUES */
-        .move-item { 
-            display: inline-flex; 
-            align-items: center; 
-            gap: 6px; 
-            background: #1a1a1a; 
-            padding: 4px 8px; 
-            border-radius: 12px; 
-            margin: 3px;
-            border: 1px solid #444; 
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            cursor: help; 
-        }
+        .move-item { display: inline-flex; align-items: center; gap: 6px; background: #1a1a1a; padding: 4px 8px; border-radius: 12px; margin: 3px; border: 1px solid #444; box-shadow: 0 2px 4px rgba(0,0,0,0.3); cursor: help; }
         .move-type-icon { font-size: 9px; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; font-weight: bold; background: #666; color: white; min-width: 35px; text-align: center; }
         .move-name { outline: none; font-size: 12px; color: #eee; font-weight: 500; text-transform: capitalize;}
         
-        /* Efecto Hover para la X */
         .btn-small-del { background-color: transparent; color: #ff4d4d; border: none; font-weight: bold; cursor: pointer; padding: 0 4px; font-size: 12px; opacity: 0; transition: opacity 0.2s ease; }
         .move-item:hover .btn-small-del { opacity: 1; }
-
         .btn-add-move { background-color: #444; color: #ccc; border: 1px dashed #666; padding: 3px; border-radius: 3px; cursor: pointer; width: 100%; font-size: 10px; margin-top: 2px; }
         
         /* PANEL FLOTANTE CUSTOM (TOOLTIP) */
-        #custom-tooltip {
-            position: fixed;
-            background: rgba(20, 15, 25, 0.95);
-            border: 2px solid #c77dff;
-            color: #fff;
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 12px;
-            pointer-events: none;
-            z-index: 10000;
-            display: none;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.7);
-            max-width: 240px;
-            backdrop-filter: blur(4px);
-        }
+        #custom-tooltip { position: fixed; background: rgba(20, 15, 25, 0.95); border: 2px solid #c77dff; color: #fff; padding: 10px; border-radius: 8px; font-size: 12px; pointer-events: none; z-index: 10000; display: none; box-shadow: 0 4px 15px rgba(0,0,0,0.7); max-width: 240px; backdrop-filter: blur(4px); }
         .tt-header { font-weight: bold; color: #c77dff; margin-bottom: 5px; border-bottom: 1px solid #444; padding-bottom: 4px; text-transform: uppercase; font-size: 13px;}
         .tt-stats { display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; background: #222; padding: 4px; border-radius: 4px;}
         .tt-desc { color: #ddd; line-height: 1.4; }
@@ -204,6 +177,9 @@
         let autoSaveTimer;
         let isSaving = false;
         let pendingRemoteData = null;
+        
+        // EL CANDADO DE TIEMPO (TIMESTAMP)
+        let lastKnownTimestamp = 0; 
         let ultimoJsonGuardado = ""; 
 
         async function checkPass() {
@@ -221,13 +197,21 @@
         }
 
         async function cargarDeLaNubeInicial() {
-            const { data, error } = await client.from('vortice_data').select('datos_json').eq('id', 1).maybeSingle();
-            if(data && data.datos_json && data.datos_json !== "{}") {
-                aplicarHtml(data.datos_json);
-                ultimoJsonGuardado = data.datos_json; 
+            try {
+                const { data, error } = await client.from('vortice_data').select('datos_json').eq('id', 1).maybeSingle();
+                if(data && data.datos_json && data.datos_json !== "{}") {
+                    const ui = JSON.parse(data.datos_json);
+                    if (ui.timestamp) lastKnownTimestamp = ui.timestamp; // Ajustamos el reloj interno
+                    aplicarHtml(data.datos_json);
+                    ultimoJsonGuardado = data.datos_json; 
+                }
+            } catch (e) {
+                console.error("Fallo de conexión al cargar", e);
             }
+            
             const filasActuales = document.getElementById('tbody-inventario').querySelectorAll('tr').length;
             if (filasActuales < 20) { generarTablas(); }
+            
             isAppReady = true; 
         }
 
@@ -243,24 +227,54 @@
             clearTimeout(autoSaveTimer);
             document.getElementById('save-status').innerText = "✏️ Escribiendo...";
             document.getElementById('save-icon').innerText = "⏳";
-            autoSaveTimer = setTimeout(() => { guardarEnLaNubeSilencioso(); }, 1500);
+            autoSaveTimer = setTimeout(() => { guardarEnLaNubeSilencioso(); }, 1200);
         }
 
         async function guardarEnLaNubeSilencioso() {
             if (!isAppReady) return; 
             isSaving = true;
+            document.getElementById('save-status').innerText = "Verificando seguridad...";
+
+            // SISTEMA ANTI-VACÍOS Y ANTI-CHOQUES
+            try {
+                const check = await client.from('vortice_data').select('datos_json').eq('id', 1).maybeSingle();
+                if (check.data && check.data.datos_json) {
+                    const nube = JSON.parse(check.data.datos_json);
+                    // Si la nube tiene una versión más nueva (alguien guardó o cargaste vacío), se BLOQUEA el guardado
+                    if (nube.timestamp && nube.timestamp > lastKnownTimestamp) {
+                        mostrarToast("⚠️ Prevención de borrado activada. Restaurando datos reales...");
+                        lastKnownTimestamp = nube.timestamp;
+                        aplicarHtml(check.data.datos_json);
+                        ultimoJsonGuardado = check.data.datos_json;
+                        isSaving = false;
+                        document.getElementById('save-status').innerText = "Datos Restaurados";
+                        document.getElementById('save-icon').innerText = "🟢";
+                        return; // ABORTA EL GUARDADO FATAL
+                    }
+                }
+            } catch (e) {}
+
             document.getElementById('save-status').innerText = "Guardando...";
+            lastKnownTimestamp = Date.now(); // Actualiza el sello de tiempo a este momento exacto
+
             const estadoUI = {
+                timestamp: lastKnownTimestamp,
                 t1: document.getElementById('tramo-1').innerHTML, t2: document.getElementById('tramo-2').innerHTML,
                 t3: document.getElementById('tramo-3').innerHTML, t4: document.getElementById('tramo-4').innerHTML,
                 ed: document.getElementById('episodio-delta').innerHTML, inv: document.getElementById('tbody-inventario').innerHTML,
                 pres: document.getElementById('tbody-prestamos').innerHTML, pkm: document.getElementById('tbody-pokemons').innerHTML
             };
+            
             const jsonStr = JSON.stringify(estadoUI);
             ultimoJsonGuardado = jsonStr; 
+
             const { error } = await client.from('vortice_data').upsert({ id: 1, datos_json: jsonStr });
             isSaving = false;
-            if(!error) { document.getElementById('save-status').innerText = "Sincronizado"; document.getElementById('save-icon').innerText = "🟢"; }
+            
+            if(!error) { 
+                document.getElementById('save-status').innerText = "Sincronizado"; 
+                document.getElementById('save-icon').innerText = "🟢"; 
+            }
         }
 
         function suscribirseASincronizacion() {
@@ -271,13 +285,20 @@
 
         function gestionarConflictosEnVivo(nuevoJsonStr) {
             if (nuevoJsonStr === ultimoJsonGuardado) return; 
+            
             const activeElem = document.activeElement;
             const isUserEditing = activeElem && (activeElem.tagName === 'INPUT' || activeElem.isContentEditable);
             if (isUserEditing) {
-                pendingRemoteData = nuevoJsonStr; mostrarToast("Tus compañeros hicieron cambios. Se aplicarán cuando termines de escribir.");
+                pendingRemoteData = nuevoJsonStr; 
+                mostrarToast("Alguien actualizó la tabla. Se reflejará al terminar.");
             } else {
-                aplicarHtml(nuevoJsonStr); mostrarToast("Base de datos actualizada en vivo 🔄");
+                aplicarHtml(nuevoJsonStr); 
+                try {
+                    const parsed = JSON.parse(nuevoJsonStr);
+                    if (parsed.timestamp) lastKnownTimestamp = parsed.timestamp;
+                } catch(e){}
                 ultimoJsonGuardado = nuevoJsonStr;
+                mostrarToast("Base de datos actualizada en vivo 🔄");
             }
         }
 
@@ -285,7 +306,14 @@
             setTimeout(() => {
                 const activeElem = document.activeElement;
                 if (pendingRemoteData && activeElem.tagName !== 'INPUT' && !activeElem.isContentEditable) {
-                    aplicarHtml(pendingRemoteData); ultimoJsonGuardado = pendingRemoteData; pendingRemoteData = null; mostrarToast("Cambios pendientes aplicados exitosamente.");
+                    aplicarHtml(pendingRemoteData); 
+                    try {
+                        const parsed = JSON.parse(pendingRemoteData);
+                        if (parsed.timestamp) lastKnownTimestamp = parsed.timestamp;
+                    } catch(e){}
+                    ultimoJsonGuardado = pendingRemoteData; 
+                    pendingRemoteData = null; 
+                    mostrarToast("Cambios pendientes aplicados exitosamente.");
                 }
             }, 200);
         });
@@ -313,51 +341,32 @@
         }
 
         // =======================================================
-        // MEGA DICCIONARIO GEN 1 A 6 (A PRUEBA DE FALLOS)
+        // MEGA DICCIONARIO GEN 1 A 6
         // =======================================================
         const typeColors = { normal: '#A8A77A', fire: '#EE8130', water: '#6390F0', electric: '#F7D02C', grass: '#7AC74C', ice: '#96D9D6', fighting: '#C22E28', poison: '#A33EA1', ground: '#E2BF65', flying: '#A98FF3', psychic: '#F95587', bug: '#A6B91A', rock: '#B6A136', ghost: '#735797', dragon: '#6F35FC', dark: '#705898', steel: '#B7B7CE', fairy: '#D685AD' };
         
-        // Destruye espacios, guiones y cambia la ñ a n para la búsqueda.
         function normalizarTexto(txt) { 
             return txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, ''); 
         }
 
         const dictES_EN = { 
-            // Normales
             "placaje":"tackle", "aranazo":"scratch", "corte":"cut", "destructor":"pound", "megapuno":"mega-punch", "patadasalto":"jump-kick", "golpecabeza":"headbutt", "golpecuerpo":"body-slam", "derribo":"take-down", "doblefilo":"double-edge", "latigo":"vine-whip", "pisotear":"stomp", "cornada":"horn-attack", "furia":"fury-attack", "perforador":"horn-drill", "ataquerapido":"quick-attack", "furiaalada":"fury-swipes", "danzaespada":"swords-dance", "canto":"sing", "gruñido":"growl", "rugido":"roar", "anulacion":"disable", "rayoaurora":"aurora-beam", "hiperrayo":"hyper-beam", "recuperacion":"recover", "pantallaluz":"light-screen", "reflejo":"reflect", "focoenergia":"focus-energy", "venganza":"bide", "metronomo":"metronome", "esquema":"sketch", "telarana":"spider-web", "batido":"milk-drink", "campanacura":"heal-bell", "retribucion":"return", "frustracion":"frustration", "vologuardia":"safeguard", "dividedolor":"pain-split", "campanada":"heal-bell", "sorpresa":"fake-out", "alboroto":"uproar", "esfuerzo":"endeavor", "bostezo":"yawn", "refuerzo":"helping-hand", "auxilio":"helping-hand", "senuelo":"follow-me", "vozcharrona":"hyper-voice", "meteorobola":"weather-ball", "cosquillas":"tickle", "donnatural":"natural-gift", "camuflaje":"camouflage", "ultimaestocada":"last-resort", "golpesuerte":"lucky-chant", "acupresion":"acupressure", "doblegolpe":"double-hit", "amago":"feint", "seduccion":"captivate", "sentencia":"judgment", "velosagrado":"safeguard", "danzaamiga":"teeter-dance", "proteccion":"protect", "sustituto":"substitute", "velocidadextrema":"extreme-speed", "tambor":"belly-drum", "relevo":"baton-pass", "transformacion":"transform", "sonambulo":"sleep-talk", "ronquido":"snore", "explosion":"explosion", "autodestruccion":"self-destruct", "estimulo":"smelling-salts", "afilar":"sharpen", "treparrocas":"rock-climb", "girorapido":"rapid-spin", "deseo":"wish", "solmatinal":"morning-sun", "golpe":"pound", "rompecoraza":"shell-smash", "garrabrutal":"crush-claw", "chirrido":"screech", "celebracion":"celebrate", "arraigo":"ingrain", "megapatada":"mega-kick", "amnesia":"amnesia", "destello":"flash", "falsotortazo":"false-swipe", "campanacuración":"heal-bell",
-            // Fuego
             "lanzallamas":"flamethrower", "llamarada":"fire-blast", "fuegosagrado":"sacred-fire", "enviteigneo":"flare-blitz", "sofoco":"overheat", "fuegofatuo":"will-o-wisp", "diasoleado":"sunny-day", "nitrocarga":"flame-charge", "ondaignea":"heat-wave", "punofuego":"fire-punch", "colmilloigneo":"fire-fang", "estallido":"eruption", "danzallama":"fiery-dance", "bombaignea":"magma-storm", "fuegomistico":"mystical-fire", "golpecalor":"heat-crash", "ascuas":"ember", "girofuego":"fire-spin", "calcina":"incinerate", "infierno":"inferno", "humareda":"lava-plume", "ruedafuego":"flame-wheel", "patadaignea":"blaze-kick", "llamafinal":"blue-flare", "votofuego":"fire-pledge",
-            // Agua
             "hidrobomba":"hydro-pump", "surf":"surf", "escaldar":"scald", "cascada":"waterfall", "acuajet":"aqua-jet", "danzalluvia":"rain-dance", "acuacola":"aqua-tail", "pulsoprimigenio":"origin-pulse", "salpicar":"water-spout", "hidroariete":"liquidation", "conchafilo":"razor-shell", "acuaaro":"aqua-ring", "rayoburbuja":"bubble-beam", "buceo":"dive", "pistolaagua":"water-gun", "burbuja":"bubble", "tenaza":"clamp", "martillazo":"crabhammer", "danzaaleteo":"quiver-dance", "hidropulso":"water-pulse", "acua-jet":"aqua-jet", "votoagua":"water-pledge", "shurikenagua":"water-shuriken",
-            // Eléctrico
             "rayo":"thunderbolt", "trueno":"thunder", "voltiocambio":"volt-switch", "chispa":"spark", "punotrueno":"thunder-punch", "colmillorayo":"thunder-fang", "ondatrueno":"thunder-wave", "chispazo":"discharge", "rayocarga":"charge-beam", "placajeelectrico":"volt-tackle", "electrocanon":"zap-cannon", "electrotela":"electroweb", "mismodestino":"destiny-bond", "impactrueno":"thunder-shock", "onda-trueno":"thunder-wave", "ataquefuror":"fury-attack", "electrificacion":"electrify", "cargaparabola":"electro-ball", "bolavoltio":"electro-ball", "ataquefuente":"charge",
-            // Planta
             "gigadrenado":"giga-drain", "latigazo":"power-whip", "lluevehojas":"leaf-storm", "sintesis":"synthesis", "drenadoras":"leech-seed", "espora":"spore", "somnifero":"sleep-powder", "paralizador":"stun-spore", "rayosolar":"solar-beam", "bombagermen":"seed-bomb", "mazazo":"wood-hammer", "hojaaguda":"leaf-blade", "energiabola":"energy-ball", "silbato":"grass-whistle", "fuerzafloral":"petal-blizzard", "absorber":"absorb", "megadrenar":"mega-drain", "hojaafilada":"razor-leaf", "danza-petalo":"petal-dance", "brazopincho":"needle-arm", "aromaterapia":"aromatherapy", "latigocepa":"vine-whip", "plantaloca":"frenzy-plant", "plantaferoz":"frenzy-plant", "votoplanta":"grass-pledge", "barreraespinosa":"spiky-shield", "astadrenaje":"horn-leech",
-            // Hielo
             "rayohielo":"ice-beam", "ventisca":"blizzard", "chuzos":"icicle-crash", "cantohelado":"ice-shard", "punohielo":"ice-punch", "colmillohielo":"ice-fang", "liofilizacion":"freeze-dry", "vientohielo":"icy-wind", "granizo":"hail", "nevasca":"blizzard", "aurora":"aurora-beam", "carambano":"icicle-spear", "alud":"avalanche", "polvonieve":"powder-snow", "niebla":"haze", "rayo-hielo":"ice-beam", "vaho-gelido":"frost-breath", "vahogelido":"frost-breath",
-            // Lucha
             "abocajarro":"close-combat", "fuerzabruta":"superpower", "ondacertera":"focus-blast", "patadasaltoalta":"high-jump-kick", "punodrenaje":"drain-punch", "ultrapuno":"mach-punch", "esferaaural":"aura-sphere", "corpulencia":"bulk-up", "puntapie":"low-kick", "demolicion":"brick-break", "inversion":"reversal", "anticipo":"detect", "espalda":"vital-throw", "ondavacio":"vacuum-wave", "llavegiro":"submission", "tirovital":"vital-throw", "palmeo":"force-palm", "ganchoalto":"sky-uppercut", "golpekarate":"karate-chop", "doblepatada":"double-kick", "tirosismico":"seismic-toss", "sumision":"submission", "patadabaja":"low-kick", "movimientosismico":"seismic-toss", "empujon":"arm-thrust", "punodinamico":"dynamic-punch",
-            // Veneno
             "puyanociva":"poison-jab", "bombalodo":"sludge-bomb", "ondatoxica":"sludge-wave", "toxico":"toxic", "puastoxicas":"toxic-spikes", "colmilloveneno":"poison-fang", "cargatoxica":"venoshock", "gascorrosivo":"corrosive-gas", "lanzamugre":"gunk-shot", "picotazoveneno":"poison-sting", "polvoveneno":"poison-powder", "acido":"acid", "bombaacida":"acid-spray", "residuos":"sludge", "gasvenenoso":"poison-gas", "polucion":"smog", "dobleataque":"double-hit",
-            // Tierra
             "terremoto":"earthquake", "tierraviva":"earth-power", "terratemblor":"bulldoze", "fuerzaequina":"high-horsepower", "puas":"spikes", "tramparocas":"stealth-rock", "pisotonpataleta":"stomping-tantrum", "buclearena":"sand-tomb", "magnitud":"magnitude", "fisura":"fissure", "huesomerang":"bone-club", "ataqueoseo":"bone-rush", "ataquearena":"sand-attack", "excavar":"dig", "disparo-lodo":"mud-shot", "disparolodo":"mud-shot", "bomba-fango":"mud-bomb", "bombafango":"mud-bomb",
-            // Volador
             "pajaroosado":"brave-bird", "tajoaereo":"air-slash", "vendaval":"hurricane", "respiro":"roost", "despejar":"defog", "acrobata":"acrobatics", "golpeaereo":"aerial-ace", "picotaladro":"drill-peck", "vientoafin":"tailwind", "vuelo":"fly", "picocanon":"beak-blast", "aireafilado":"razor-wind", "ataqueala":"wing-attack", "tornando":"gust", "picotazo":"peck", "movimientoespejo":"mirror-move", "espejo":"mirror-move", "danza-pluma":"feather-dance", "caida-libre":"free-fall", "ascensodraco":"dragon-ascent",
-            // Psíquico
             "psiquico":"psychic", "psicocarga":"psyshock", "cabezazozen":"zen-headbutt", "pazmental":"calm-mind", "barrera":"barrier", "pantalladeluz":"light-screen", "reflejo":"reflect", "espacioraro":"trick-room", "mofa":"taunt", "truco":"trick", "capamagica":"magic-coat", "premolicion":"future-sight", "agilidad":"agility", "masacosmica":"cosmic-power", "hipnosis":"hypnosis", "comesuenos":"dream-eater", "paranormal":"extrasensory", "confusion":"confusion", "kinetico":"kinesis", "teletransportacion":"teleport", "psicorayo":"psybeam", "arrumaco":"heart-stamp", "deseocura":"healing-wish", "zonaextraña":"wonder-room", "zonamagica":"magic-room", "espaciomágico":"magic-room",
-            // Bicho
             "idayvuelta":"u-turn", "zumbido":"bug-buzz", "tijerax":"x-scissor", "chupavidas":"leech-life", "redviscosa":"sticky-web", "polvoira":"rage-powder", "picadura":"bug-bite", "megacuerno":"megahorn", "pinmisil":"pin-missile", "estoicismo":"struggle-bug", "cortefuria":"fury-cutter", "acoso":"infestation", "chupavida":"leech-life", "doblerayo":"signal-beam", "ataque-orden":"order-up",
-            // Roca
             "avalancha":"rock-slide", "rocaafilada":"stone-edge", "tumbarocas":"rock-tomb", "joyadeluz":"power-gem", "pedrada":"rock-blast", "tormentadearena":"sandstorm", "testarazo":"head-smash", "poderpasado":"ancient-power", "lanzarrocas":"rock-throw", "pulimento":"rock-polish", "tormentadiamantes":"diamond-storm",
-            // Fantasma
             "bolasombra":"shadow-ball", "garraumbria":"shadow-claw", "sombravil":"shadow-sneak", "infortunio":"hex", "maldicion":"curse", "golpefantasma":"phantom-force", "rayoconfuso":"confuse-ray", "vientoaciago":"ominous-wind", "tinieblas":"night-shade", "pesadilla":"nightmare", "poltergeist":"poltergeist", "lenguetazo":"lick", "tiniebla":"night-shade", "rayo-confuso":"confuse-ray", "rencor":"spite",
-            // Dragón
             "garradragon":"dragon-claw", "pulsodragon":"dragon-pulse", "cometadraco":"draco-meteor", "enfado":"outrage", "danzadragon":"dragon-dance", "cargadragon":"dragon-rush", "coladragon":"dragon-tail", "furiadragon":"dragon-rage", "dragoaliento":"dragon-breath", "cortevacio":"spacial-rend", "distorsion":"roar-of-time", "pulso-dragon":"dragon-pulse", "carga-dragon":"dragon-rush",
-            // Siniestro
             "desarme":"knock-off", "golpebajo":"sucker-punch", "juegosucio":"foul-play", "pulsoumbrio":"dark-pulse", "triturar":"crunch", "maquinacion":"nasty-plot", "alarido":"snarl", "tajoumbrio":"night-slash", "persecucion":"pursuit", "mordisco":"bite", "finta":"feint-attack", "ladron":"thief", "embargo":"embargo", "lanzamiento":"fling", "pulsonoche":"night-daze", "brechanegra":"dark-void", "paliza":"beat-up", "falsolllanto":"fake-tears",
-            // Acero
             "focoresplandor":"flash-cannon", "cabezadehierro":"iron-head", "punobala":"bullet-punch", "girobola":"gyro-ball", "cuerpopesado":"heavy-slam", "defensaferrea":"iron-defense", "cambiodemarcha":"shift-gear", "aligerar":"autotomize", "escudoreal":"kings-shield", "colaferrea":"iron-tail", "garrametal":"metal-claw", "aladeacero":"steel-wing", "deseooculto":"doom-desire", "reparacion":"iron-defense", "puño-bala":"bullet-punch",
-            // Hada
             "fuerzalunar":"moonblast", "carantona":"play-rough", "brillomagico":"dazzling-gleam", "besodrenaje":"draining-kiss", "geocontrol":"geomancy", "luzlunar":"moonlight", "campodeniebla":"misty-terrain", "encanto":"charm", "besodulce":"sweet-kiss", "ojitostiernos":"baby-doll-eyes"
         };
         const cacheAPI = { pokemon: {}, moves: {} };
@@ -365,7 +374,6 @@
 
         function traducirMovimiento(movEsp) { 
             const norm = normalizarTexto(movEsp); 
-            // Si está en el Mega Diccionario lo traduce. Si no, lo limpia y asume que está en inglés
             return dictES_EN[norm] || movEsp.toLowerCase().trim().replace(/[^a-z0-9]/g, '-'); 
         }
 
@@ -515,7 +523,7 @@
         }
 
         // =======================================================
-        // LÓGICA DEL PANEL FLOTANTE CUSTOMIZADO (TOOLTIP)
+        // PANEL FLOTANTE CUSTOMIZADO (TOOLTIP)
         // =======================================================
         const tooltip = document.createElement('div');
         tooltip.id = 'custom-tooltip';
@@ -554,7 +562,6 @@
                         let accuracy = mvData.accuracy !== null ? mvData.accuracy : '--';
                         let desc = 'Sin descripción.';
                         
-                        // Busca la descripción en español ("es")
                         const descEsp = mvData.flavor_text_entries.find(entry => entry.language.name === 'es');
                         if (descEsp) {
                             desc = descEsp.flavor_text.replace(/\n|\f/g, ' ');
