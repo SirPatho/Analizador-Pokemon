@@ -39,6 +39,7 @@
         .btn-main { color: white; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; border: none; transition: 0.2s; }
         .btn-upload { background-color: #9d4edd; } .btn-upload:hover { background-color: #c77dff; color: #000; }
         .btn-manual { background-color: #3c096c; border: 1px solid #c77dff; } .btn-manual:hover { background-color: #c77dff; color: #000; }
+        .btn-danger { background-color: #ff4d4d; border: 1px solid #ff4d4d; } .btn-danger:hover { background-color: #ff7979; color: black;}
         
         #toast-notification { position: fixed; bottom: 20px; right: 20px; background-color: #2ed573; color: black; padding: 15px 20px; border-radius: 5px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5); display: none; z-index: 1000; transition: 0.3s; }
 
@@ -47,7 +48,7 @@
         .tab-btn { background-color: #222; color: white; border: 1px solid #3c096c; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; }
         .tab-btn:hover { background-color: #333; } .tab-btn.active { background-color: #9d4edd; box-shadow: 0 0 10px rgba(157, 78, 221, 0.5); }
         .tab-content { display: none; } .tab-content.active { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; align-items: start; }
-        #mercado-mts.active { display: block; } 
+        #mercado-mts.active, #historial-respaldos.active { display: block; } 
 
         /* CSS ENTRENADORES Y TABLAS */
         .player-accordion { background-color: rgba(20, 15, 25, 0.95); border-radius: 8px; border: 1px solid #3c096c; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.6); }
@@ -97,6 +98,13 @@
         .input-new-mt { background-color: #222; border: 1px solid #555; color: white; padding: 6px; border-radius: 4px; font-size: 12px; width: 130px; outline: none; }
         .btn-add-inventory { background-color: #9d4edd; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; padding: 6px 12px; font-size: 12px; }
 
+        /* HISTORIAL CSS */
+        .historial-container { background: rgba(20, 15, 25, 0.95); border: 1px solid #3c096c; border-radius: 8px; padding: 20px; max-width: 900px; margin: 0 auto;}
+        .historial-list { list-style: none; padding: 0; max-height: 400px; overflow-y: auto;}
+        .historial-item { background: #111; border-left: 3px solid #c77dff; margin-bottom: 8px; padding: 8px 12px; font-size: 13px; color: #ddd; border-radius: 0 4px 4px 0;}
+        .historial-time { color: #888; font-size: 11px; margin-right: 10px; font-weight: bold;}
+        .backup-panel { background: rgba(255, 77, 77, 0.1); border: 1px solid #ff4d4d; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center;}
+
         @media (max-width: 1200px) { .tab-content.active { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -135,6 +143,7 @@
             <button class="tab-btn" data-target="tramo-4">Tramo 4</button>
             <button class="tab-btn" data-target="episodio-delta">Episodio Delta</button>
             <button class="tab-btn" data-target="mercado-mts" style="background-color: #111; border-color: #fff;">📜 Mercado y Balances</button>
+            <button class="tab-btn" data-target="historial-respaldos" style="background-color: #3c096c;">📖 Historial y Respaldos</button>
         </div>
 
         <div id="tramo-1" class="tab-content active"></div>
@@ -165,6 +174,18 @@
                 </table>
             </div>
         </div>
+
+        <div id="historial-respaldos" class="tab-content">
+            <div class="historial-container">
+                <div class="backup-panel">
+                    <h3 style="color: #ff4d4d; margin-top:0;">🛡️ Restauración de Emergencia</h3>
+                    <p style="font-size: 13px; color: #ddd;">El sistema guarda automáticamente una copia de seguridad cada día nuevo. Si hoy ocurrió un borrado accidental, usa este botón para restaurar la base de datos exactamente como estaba ayer.</p>
+                    <button class="btn-main btn-danger" onclick="ejecutarRestauracion()">Restaurar Copia del Día Anterior</button>
+                </div>
+                <h3 style="color: #c77dff;">📜 Libro Diario (Últimos 50 Movimientos)</h3>
+                <ul class="historial-list" id="lista-auditoria"></ul>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -178,9 +199,13 @@
         let isSaving = false;
         let pendingRemoteData = null;
         
-        // EL CANDADO DE TIEMPO (TIMESTAMP)
         let lastKnownTimestamp = 0; 
         let ultimoJsonGuardado = ""; 
+        
+        // AUDITORÍA Y BACKUPS
+        let historialAuditoria = [];
+        let backupData = null;
+        let fechaUltimoGuardado = "";
 
         async function checkPass() {
             const input = document.getElementById('pass-input').value.trim().toLowerCase();
@@ -196,13 +221,55 @@
             }
         }
 
+        function registrarAuditoria(mensaje) {
+            const hora = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+            historialAuditoria.unshift(`<span class="historial-time">[${hora}]</span> ${mensaje}`);
+            if(historialAuditoria.length > 50) historialAuditoria.pop();
+            renderizarHistorialUI();
+        }
+
+        function renderizarHistorialUI() {
+            const ul = document.getElementById('lista-auditoria');
+            ul.innerHTML = '';
+            historialAuditoria.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'historial-item';
+                li.innerHTML = item;
+                ul.appendChild(li);
+            });
+        }
+
+        async function ejecutarRestauracion() {
+            if(!backupData) {
+                alert("No hay copias de seguridad anteriores registradas en el sistema.");
+                return;
+            }
+            if(confirm("⚠️ ADVERTENCIA: Esta acción reemplazará la tabla actual por la del día de ayer. Todos los cambios de hoy se perderán. ¿Proceder con la auditoría de reversión?")) {
+                registrarAuditoria("⚠️ Se ejecutó la Restauración de Emergencia del Backup Diario.");
+                
+                // Mantenemos el historial y la fecha para no romper el ciclo
+                backupData.historial = historialAuditoria;
+                backupData.fecha = fechaUltimoGuardado;
+                backupData.timestamp = Date.now();
+                
+                aplicarHtml(JSON.stringify(backupData));
+                triggerAutoSave();
+                alert("Restauración completada. Los balances han vuelto al estado de ayer.");
+            }
+        }
+
         async function cargarDeLaNubeInicial() {
             try {
                 const { data, error } = await client.from('vortice_data').select('datos_json').eq('id', 1).maybeSingle();
                 if(data && data.datos_json && data.datos_json !== "{}") {
                     const ui = JSON.parse(data.datos_json);
-                    if (ui.timestamp) lastKnownTimestamp = ui.timestamp; // Ajustamos el reloj interno
+                    if (ui.timestamp) lastKnownTimestamp = ui.timestamp; 
+                    if (ui.historial) historialAuditoria = ui.historial;
+                    if (ui.backup) backupData = ui.backup;
+                    if (ui.fecha) fechaUltimoGuardado = ui.fecha;
+                    
                     aplicarHtml(data.datos_json);
+                    renderizarHistorialUI();
                     ultimoJsonGuardado = data.datos_json; 
                 }
             } catch (e) {
@@ -235,12 +302,10 @@
             isSaving = true;
             document.getElementById('save-status').innerText = "Verificando seguridad...";
 
-            // SISTEMA ANTI-VACÍOS Y ANTI-CHOQUES
             try {
                 const check = await client.from('vortice_data').select('datos_json').eq('id', 1).maybeSingle();
                 if (check.data && check.data.datos_json) {
                     const nube = JSON.parse(check.data.datos_json);
-                    // Si la nube tiene una versión más nueva (alguien guardó o cargaste vacío), se BLOQUEA el guardado
                     if (nube.timestamp && nube.timestamp > lastKnownTimestamp) {
                         mostrarToast("⚠️ Prevención de borrado activada. Restaurando datos reales...");
                         lastKnownTimestamp = nube.timestamp;
@@ -249,16 +314,27 @@
                         isSaving = false;
                         document.getElementById('save-status').innerText = "Datos Restaurados";
                         document.getElementById('save-icon').innerText = "🟢";
-                        return; // ABORTA EL GUARDADO FATAL
+                        return; 
                     }
                 }
             } catch (e) {}
 
             document.getElementById('save-status').innerText = "Guardando...";
-            lastKnownTimestamp = Date.now(); // Actualiza el sello de tiempo a este momento exacto
+            lastKnownTimestamp = Date.now(); 
+            
+            const hoy = new Date().toLocaleDateString();
+            if (fechaUltimoGuardado !== "" && fechaUltimoGuardado !== hoy && ultimoJsonGuardado !== "") {
+                // Es un día nuevo. Guardamos el último estado conocido como Backup
+                const ultimoEstado = JSON.parse(ultimoJsonGuardado);
+                backupData = ultimoEstado;
+            }
+            fechaUltimoGuardado = hoy;
 
             const estadoUI = {
                 timestamp: lastKnownTimestamp,
+                historial: historialAuditoria,
+                backup: backupData,
+                fecha: fechaUltimoGuardado,
                 t1: document.getElementById('tramo-1').innerHTML, t2: document.getElementById('tramo-2').innerHTML,
                 t3: document.getElementById('tramo-3').innerHTML, t4: document.getElementById('tramo-4').innerHTML,
                 ed: document.getElementById('episodio-delta').innerHTML, inv: document.getElementById('tbody-inventario').innerHTML,
@@ -285,7 +361,6 @@
 
         function gestionarConflictosEnVivo(nuevoJsonStr) {
             if (nuevoJsonStr === ultimoJsonGuardado) return; 
-            
             const activeElem = document.activeElement;
             const isUserEditing = activeElem && (activeElem.tagName === 'INPUT' || activeElem.isContentEditable);
             if (isUserEditing) {
@@ -296,6 +371,9 @@
                 try {
                     const parsed = JSON.parse(nuevoJsonStr);
                     if (parsed.timestamp) lastKnownTimestamp = parsed.timestamp;
+                    if (parsed.historial) { historialAuditoria = parsed.historial; renderizarHistorialUI(); }
+                    if (parsed.backup) backupData = parsed.backup;
+                    if (parsed.fecha) fechaUltimoGuardado = parsed.fecha;
                 } catch(e){}
                 ultimoJsonGuardado = nuevoJsonStr;
                 mostrarToast("Base de datos actualizada en vivo 🔄");
@@ -310,6 +388,9 @@
                     try {
                         const parsed = JSON.parse(pendingRemoteData);
                         if (parsed.timestamp) lastKnownTimestamp = parsed.timestamp;
+                        if (parsed.historial) { historialAuditoria = parsed.historial; renderizarHistorialUI(); }
+                        if (parsed.backup) backupData = parsed.backup;
+                        if (parsed.fecha) fechaUltimoGuardado = parsed.fecha;
                     } catch(e){}
                     ultimoJsonGuardado = pendingRemoteData; 
                     pendingRemoteData = null; 
@@ -340,9 +421,6 @@
             } catch(e) {}
         }
 
-        // =======================================================
-        // MEGA DICCIONARIO GEN 1 A 6
-        // =======================================================
         const typeColors = { normal: '#A8A77A', fire: '#EE8130', water: '#6390F0', electric: '#F7D02C', grass: '#7AC74C', ice: '#96D9D6', fighting: '#C22E28', poison: '#A33EA1', ground: '#E2BF65', flying: '#A98FF3', psychic: '#F95587', bug: '#A6B91A', rock: '#B6A136', ghost: '#735797', dragon: '#6F35FC', dark: '#705898', steel: '#B7B7CE', fairy: '#D685AD' };
         
         function normalizarTexto(txt) { 
@@ -360,9 +438,9 @@
             "puyanociva":"poison-jab", "bombalodo":"sludge-bomb", "ondatoxica":"sludge-wave", "toxico":"toxic", "puastoxicas":"toxic-spikes", "colmilloveneno":"poison-fang", "cargatoxica":"venoshock", "gascorrosivo":"corrosive-gas", "lanzamugre":"gunk-shot", "picotazoveneno":"poison-sting", "polvoveneno":"poison-powder", "acido":"acid", "bombaacida":"acid-spray", "residuos":"sludge", "gasvenenoso":"poison-gas", "polucion":"smog", "dobleataque":"double-hit",
             "terremoto":"earthquake", "tierraviva":"earth-power", "terratemblor":"bulldoze", "fuerzaequina":"high-horsepower", "puas":"spikes", "tramparocas":"stealth-rock", "pisotonpataleta":"stomping-tantrum", "buclearena":"sand-tomb", "magnitud":"magnitude", "fisura":"fissure", "huesomerang":"bone-club", "ataqueoseo":"bone-rush", "ataquearena":"sand-attack", "excavar":"dig", "disparo-lodo":"mud-shot", "disparolodo":"mud-shot", "bomba-fango":"mud-bomb", "bombafango":"mud-bomb",
             "pajaroosado":"brave-bird", "tajoaereo":"air-slash", "vendaval":"hurricane", "respiro":"roost", "despejar":"defog", "acrobata":"acrobatics", "golpeaereo":"aerial-ace", "picotaladro":"drill-peck", "vientoafin":"tailwind", "vuelo":"fly", "picocanon":"beak-blast", "aireafilado":"razor-wind", "ataqueala":"wing-attack", "tornando":"gust", "picotazo":"peck", "movimientoespejo":"mirror-move", "espejo":"mirror-move", "danza-pluma":"feather-dance", "caida-libre":"free-fall", "ascensodraco":"dragon-ascent",
-            "psiquico":"psychic", "psicocarga":"psyshock", "cabezazozen":"zen-headbutt", "pazmental":"calm-mind", "barrera":"barrier", "pantalladeluz":"light-screen", "reflejo":"reflect", "espacioraro":"trick-room", "mofa":"taunt", "truco":"trick", "capamagica":"magic-coat", "premolicion":"future-sight", "agilidad":"agility", "masacosmica":"cosmic-power", "hipnosis":"hypnosis", "comesuenos":"dream-eater", "paranormal":"extrasensory", "confusion":"confusion", "kinetico":"kinesis", "teletransportacion":"teleport", "psicorayo":"psybeam", "arrumaco":"heart-stamp", "deseocura":"healing-wish", "zonaextraña":"wonder-room", "zonamagica":"magic-room", "espaciomágico":"magic-room",
+            "psiquico":"psychic", "psicocarga":"psyshock", "cabezazozen":"zen-headbutt", "pazmental":"calm-mind", "barrera":"barrier", "pantalladeluz":"light-screen", "reflejo":"reflect", "espacioraro":"trick-room", "mofa":"taunt", "truco":"trick", "capamagica":"magic-coat", "premolicion":"future-sight", "agilidad":"agility", "masacosmica":"cosmic-power", "hipnosis":"hypnosis", "comesuenos":"dream-eater", "paranormal":"extrasensory", "confusion":"confusion", "kinetico":"kinesis", "teletransportacion":"teleport", "psicorayo":"psybeam", "arrumaco":"heart-stamp", "deseocura":"healing-wish", "zonaextraña":"wonder-room", "zonamagica":"magic-room", "espaciomagico":"magic-room",
             "idayvuelta":"u-turn", "zumbido":"bug-buzz", "tijerax":"x-scissor", "chupavidas":"leech-life", "redviscosa":"sticky-web", "polvoira":"rage-powder", "picadura":"bug-bite", "megacuerno":"megahorn", "pinmisil":"pin-missile", "estoicismo":"struggle-bug", "cortefuria":"fury-cutter", "acoso":"infestation", "chupavida":"leech-life", "doblerayo":"signal-beam", "ataque-orden":"order-up",
-            "avalancha":"rock-slide", "rocaafilada":"stone-edge", "tumbarocas":"rock-tomb", "joyadeluz":"power-gem", "pedrada":"rock-blast", "tormentadearena":"sandstorm", "testarazo":"head-smash", "poderpasado":"ancient-power", "lanzarrocas":"rock-throw", "pulimento":"rock-polish", "tormentadiamantes":"diamond-storm",
+            "avalancha":"rock-slide", "rocaafilada":"stone-edge", "tumbarocas":"rock-tomb", "joyadeluz":"power-gem", "pedrada":"rock-blast", "tormentadearena":"sandstorm", "testarazo":"head-smash", "poderpasado":"ancient-power", "lanzarrocas":"rock-throw", "pulimento":"rock-polish", "tormentadiamantes":"diamond-storm", "tormentadediamantes":"diamond-storm",
             "bolasombra":"shadow-ball", "garraumbria":"shadow-claw", "sombravil":"shadow-sneak", "infortunio":"hex", "maldicion":"curse", "golpefantasma":"phantom-force", "rayoconfuso":"confuse-ray", "vientoaciago":"ominous-wind", "tinieblas":"night-shade", "pesadilla":"nightmare", "poltergeist":"poltergeist", "lenguetazo":"lick", "tiniebla":"night-shade", "rayo-confuso":"confuse-ray", "rencor":"spite",
             "garradragon":"dragon-claw", "pulsodragon":"dragon-pulse", "cometadraco":"draco-meteor", "enfado":"outrage", "danzadragon":"dragon-dance", "cargadragon":"dragon-rush", "coladragon":"dragon-tail", "furiadragon":"dragon-rage", "dragoaliento":"dragon-breath", "cortevacio":"spacial-rend", "distorsion":"roar-of-time", "pulso-dragon":"dragon-pulse", "carga-dragon":"dragon-rush",
             "desarme":"knock-off", "golpebajo":"sucker-punch", "juegosucio":"foul-play", "pulsoumbrio":"dark-pulse", "triturar":"crunch", "maquinacion":"nasty-plot", "alarido":"snarl", "tajoumbrio":"night-slash", "persecucion":"pursuit", "mordisco":"bite", "finta":"feint-attack", "ladron":"thief", "embargo":"embargo", "lanzamiento":"fling", "pulsonoche":"night-daze", "brechanegra":"dark-void", "paliza":"beat-up", "falsolllanto":"fake-tears",
@@ -381,7 +459,7 @@
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
                 btn.classList.add('active'); const targetId = btn.getAttribute('data-target'); document.getElementById(targetId).classList.add('active');
-                document.getElementById('main-controls').style.display = (targetId === 'mercado-mts') ? 'none' : 'flex';
+                document.getElementById('main-controls').style.display = (targetId === 'mercado-mts' || targetId === 'historial-respaldos') ? 'none' : 'flex';
             });
         });
         document.querySelectorAll('.sheet-btn').forEach(btn => {
@@ -391,11 +469,12 @@
             });
         });
 
-        function crearEntrenadorManual() { const nombre = prompt("Ingresa el nombre del entrenador (Ej: Zihul):"); if (nombre && nombre.trim() !== "") { inyectarJugador({ name: nombre.trim().toUpperCase(), team: {} }); triggerAutoSave(); } }
+        function crearEntrenadorManual() { const nombre = prompt("Ingresa el nombre del entrenador (Ej: Zihul):"); if (nombre && nombre.trim() !== "") { inyectarJugador({ name: nombre.trim().toUpperCase(), team: {} }); registrarAuditoria(`➕ Se creó el entrenador manual: ${nombre.trim().toUpperCase()}`); triggerAutoSave(); } }
         
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const files = e.target.files; if (files.length === 0) return;
             for (let file of files) { const text = await file.text(); procesarReplay(text); }
+            registrarAuditoria("📁 Se importó información desde un archivo HTML de combate.");
             e.target.value = ''; triggerAutoSave();
         });
 
@@ -435,7 +514,13 @@
             playerDiv.querySelector('.player-body').style.display = 'block';
         }
 
-        function eliminarJugador(btn) { if(confirm("¿Eliminar entrenador?")) { btn.closest('.player-accordion').remove(); triggerAutoSave(); } }
+        function eliminarJugador(btn) { 
+            if(confirm("¿Eliminar entrenador?")) { 
+                const player = btn.closest('.player-accordion').getAttribute('data-player');
+                registrarAuditoria(`❌ Se eliminó el registro completo del entrenador: ${player}`);
+                btn.closest('.player-accordion').remove(); triggerAutoSave(); 
+            } 
+        }
 
         async function crearTarjetaHTML(especie, hab, obj, moves) {
             const card = document.createElement('div'); card.className = 'pokemon-card'; card.setAttribute('data-species', especie);
@@ -444,16 +529,35 @@
                 if (cacheAPI.pokemon[apiName]) spriteUrl = cacheAPI.pokemon[apiName];
                 else { const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${apiName}`); if(res.ok) { const pkmn = await res.json(); spriteUrl = pkmn.sprites.front_default || ''; cacheAPI.pokemon[apiName] = spriteUrl; } }
             } catch(e) {}
-            card.innerHTML = `<div class="header-card">${spriteUrl ? `<img src="${spriteUrl}">` : '<span style="width:40px;text-align:center;">❓</span>'}<h3 contenteditable="true">${especie}</h3><button class="btn-small-del toggle-stop" onclick="this.closest('.pokemon-card').remove(); triggerAutoSave();">✖</button></div>
+            card.innerHTML = `<div class="header-card">${spriteUrl ? `<img src="${spriteUrl}">` : '<span style="width:40px;text-align:center;">❓</span>'}<h3 contenteditable="true">${especie}</h3><button class="btn-small-del toggle-stop" onclick="borrarTarjetaPkmn(this, '${especie}')">✖</button></div>
                 <div class="editable-line"><span style="font-size:10px;">🛡️</span><input class="editable-field" value="${hab}" onchange="this.setAttribute('value', this.value); triggerAutoSave();" placeholder="Habilidad"></div>
                 <div class="editable-line"><span style="font-size:10px;">🎒</span><input class="editable-field" value="${obj}" onchange="this.setAttribute('value', this.value); triggerAutoSave();" placeholder="Objeto"></div>
                 <ul class="move-list"></ul><button class="btn-add-move" onclick="agregarAtqManual(this)">+ Ataque</button>`;
             const ul = card.querySelector('.move-list'); for (const move of moves) ul.appendChild(await crearElementoMovimiento(move));
             return card;
         }
+        
+        function borrarTarjetaPkmn(btn, especie) {
+            registrarAuditoria(`❌ Se eliminó al Pokémon ${especie} del equipo.`);
+            btn.closest('.pokemon-card').remove(); triggerAutoSave();
+        }
 
-        async function agregarAtqManual(btn) { const moveName = prompt("Nombre del ataque:"); if (moveName) { btn.previousElementSibling.appendChild(await crearElementoMovimiento(moveName)); triggerAutoSave(); } }
-        async function añadirPokemonManual(btn) { const especie = prompt("¿Qué Pokémon quieres añadir? (Inglés)"); if (especie) { btn.previousElementSibling.appendChild(await crearTarjetaHTML(especie, "", "", [])); triggerAutoSave(); } }
+        async function agregarAtqManual(btn) { 
+            const moveName = prompt("Nombre del ataque:"); 
+            if (moveName) { 
+                btn.previousElementSibling.appendChild(await crearElementoMovimiento(moveName)); 
+                registrarAuditoria(`➕ Se añadió el ataque ${moveName} a un Pokémon.`);
+                triggerAutoSave(); 
+            } 
+        }
+        async function añadirPokemonManual(btn) { 
+            const especie = prompt("¿Qué Pokémon quieres añadir? (Inglés)"); 
+            if (especie) { 
+                btn.previousElementSibling.appendChild(await crearTarjetaHTML(especie, "", "", [])); 
+                registrarAuditoria(`➕ Se añadió manualmente al Pokémon ${especie}.`);
+                triggerAutoSave(); 
+            } 
+        }
 
         function generarTablas() {
             const tbodyInv = document.getElementById('tbody-inventario'); const tbodyPres = document.getElementById('tbody-prestamos'); const tbodyPkmn = document.getElementById('tbody-pokemons');
@@ -478,7 +582,18 @@
             const elemento = await crearElementoMovimiento(moveName);
             document.getElementById(`inv-list-${index}`).appendChild(elemento);
             
+            const jugador = jugadoresSector[index];
+            registrarAuditoria(`🎒 Se entregó la MT/Movimiento <strong>${moveName}</strong> a ${jugador}`);
+            
             triggerAutoSave(); 
+        }
+
+        // Lógica de borrar Chip con registro
+        function borrarChipAtaque(btn) {
+            const moveName = btn.previousElementSibling.innerText;
+            registrarAuditoria(`❌ Se eliminó el movimiento <strong>${moveName}</strong>`);
+            btn.parentElement.remove();
+            triggerAutoSave();
         }
 
         async function crearElementoMovimiento(moveOriginal) {
@@ -504,7 +619,7 @@
             } catch(e) {}
             
             li.style.borderColor = color;
-            li.innerHTML = `<span class="move-type-icon" style="background-color: ${color}">${type}</span><span class="move-name" contenteditable="true">${moveOriginal}</span><button class="btn-small-del" onclick="this.parentElement.remove(); triggerAutoSave();">✖</button>`; 
+            li.innerHTML = `<span class="move-type-icon" style="background-color: ${color}">${type}</span><span class="move-name" contenteditable="true">${moveOriginal}</span><button class="btn-small-del" onclick="borrarChipAtaque(this)">✖</button>`; 
             return li;
         }
 
