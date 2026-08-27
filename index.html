@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <title>S.S. NOVA - Base de Datos: SECTOR VÓRTICE</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="module">
+    // Importamos toda la librería empaquetada desde la nube
+    import * as KeySAV from 'https://esm.sh/keysavcore';
+    
+    // Lo guardamos en la ventana global para que tu botón pueda usarlo
+    window.KeySAV = KeySAV;
+    console.log("Cerebro KeySAVCore cargado correctamente:", window.KeySAV);
+</script>
     <style>
         :root {
             --bg-base: #000000; --bg-panel: rgba(20, 15, 25, 0.95); --bg-card: rgba(30, 25, 40, 0.9);
@@ -15,6 +23,19 @@
             background-image: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url('https://images.unsplash.com/photo-1462331940025-496dfbfc7564?q=80&w=2048&auto=format&fit=crop');
             background-size: cover; background-attachment: fixed; color: #e0e0e0; margin: 0; padding: 0; min-height: 100vh;
         }
+        #textarea-showdown-final {
+    width: 100%;
+    height: 350px;
+    min-height: 300px;
+    background-color: #000 !important;
+    color: #2ed573;
+    padding: 15px;
+    font-family: monospace;
+    font-size: 15px;
+    border: 1px solid #9d4edd;
+    border-radius: 5px;
+    resize: vertical;
+}
 
         /* SEGURIDAD */
         #login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #000; z-index: 9999; display: flex; justify-content: center; align-items: center; flex-direction: column; }
@@ -48,7 +69,7 @@
         .tab-btn { background-color: #222; color: white; border: 1px solid #3c096c; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; }
         .tab-btn:hover { background-color: #333; } .tab-btn.active { background-color: #9d4edd; box-shadow: 0 0 10px rgba(157, 78, 221, 0.5); }
         .tab-content { display: none; } .tab-content.active { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; align-items: start; }
-        #mercado-mts.active, #historial-respaldos.active { display: block; } 
+        #mercado-mts.active, #historial-respaldos.active, #herramientas-showdown.active { display: block; }
 
         /* CSS ENTRENADORES Y TABLAS */
         .player-accordion { background-color: rgba(20, 15, 25, 0.95); border-radius: 8px; border: 1px solid #3c096c; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.6); }
@@ -144,6 +165,7 @@
             <button class="tab-btn" data-target="episodio-delta">Episodio Delta</button>
             <button class="tab-btn" data-target="mercado-mts" style="background-color: #111; border-color: #fff;">📜 Mercado y Balances</button>
             <button class="tab-btn" data-target="historial-respaldos" style="background-color: #3c096c;">📖 Historial y Respaldos</button>
+            <button class="tab-btn" data-target="herramientas-showdown" style="background-color: #ff4d4d; border-color: #ff7979; color: white;">⚔️ Convertidor Showdown</button>
         </div>
 
         <div id="tramo-1" class="tab-content active"></div>
@@ -186,6 +208,34 @@
                 <ul class="historial-list" id="lista-auditoria"></ul>
             </div>
         </div>
+        <!-- NUEVA SECCIÓN: CONVERTIDOR SHOWDOWN -->
+<div id="herramientas-showdown" class="tab-content">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 20px; width: 100%; padding: 20px;">
+    
+    <!-- Input de Nivel -->
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <label style="color: #a855f7; font-weight: bold; font-size: 1.1em;">LÍMITE NV.</label>
+        <input type="number" id="input-nivel-locke" value="50" style="background: #1e1e1e; color: white; border: 2px solid #333; padding: 8px; width: 70px; border-radius: 5px; text-align: center; font-size: 1.1em;">
+    </div>
+
+    <!-- Zona de Arrastre -->
+    <div id="drop-zone" style="border: 2px dashed #a855f7; width: 100%; max-width: 700px; padding: 40px; text-align: center; border-radius: 10px; cursor: pointer; color: white; background-color: rgba(0,0,0,0.4); transition: all 0.3s ease;">
+        <span style="font-size: 30px;">📁</span><br><br>
+        <span style="font-size: 1.2em; font-weight: bold;">Arrastra tu archivo 'main' aquí</span><br><br>
+        <span style="font-size: 0.9em; color: #aaa;">(O haz clic para buscarlo manualmente)</span>
+        <input type="file" id="saveInput" style="display: none;">
+    </div>
+
+    <!-- Cuadro de Texto Showdown -->
+    <textarea id="textarea-showdown-final" style="width: 100%; max-width: 700px; height: 300px; background: #0a0a0a; color: #4ade80; border: 1px solid #444; border-radius: 8px; padding: 15px; font-family: monospace; font-size: 14px; resize: none;" readonly placeholder="El código Showdown generado aparecerá aquí..."></textarea>
+
+    <!-- Botón Pokepaste -->
+    <button onclick="copiarShowdown()" style="background: #5b21b6; color: white; border: none; padding: 15px; font-size: 1.1em; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; max-width: 700px; text-transform: uppercase; transition: 0.2s;">
+        📄 Copiar al Portapapeles y Abrir Pokepaste
+    </button>
+</div>
+</div>
+<!-- FIN NUEVA SECCIÓN -->
     </div>
 
     <script>
@@ -828,7 +878,169 @@
             if (e.target.closest('.move-item')) {
                 tooltip.style.display = 'none';
             }
+        });// =======================================================
+// MÓDULO UNIFICADO: LECTOR BINARIO (ARRASTRE + API PKHEX + POKEPASTE)
+// =======================================================
+const dropZone = document.getElementById('drop-zone');
+const saveInput = document.getElementById('saveInput');
+
+if (dropZone && saveInput) {
+    // 1. Prevenir el comportamiento por defecto del navegador en el arrastre
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, prevenirDefecto, false);
+        document.body.addEventListener(eventName, prevenirDefecto, false);
+    });
+
+    function prevenirDefecto(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    // 2. Efectos visuales (brillo morado al pasar archivo)
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.style.backgroundColor = 'rgba(168, 85, 247, 0.2)';
+            dropZone.style.borderColor = '#d8b4fe';
+        }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.style.backgroundColor = 'rgba(0,0,0,0.4)';
+            dropZone.style.borderColor = '#a855f7';
+        }, false);
+    });
+
+    // 3. Capturar el archivo cuando lo sueltan
+    dropZone.addEventListener('drop', (e) => {
+        let dt = e.dataTransfer;
+        let files = dt.files;
+        if (files.length > 0) {
+            procesarArchivoSave(files[0]);
+        }
+    }, false);
+
+    // 4. Clic clásico en la caja
+    dropZone.addEventListener('click', () => saveInput.click());
+    saveInput.addEventListener('change', function(e) {
+        if (e.target.files.length > 0) {
+            procesarArchivoSave(e.target.files[0]);
+        }
+        e.target.value = ''; 
+    });
+}
+
+// 5. El Motor de Comunicación con tu C# Local
+async function procesarArchivoSave(file) {
+    const textarea = document.getElementById('textarea-showdown-final');
+    const nivelInput = document.getElementById('input-nivel-locke');
+    const nivelDeseado = nivelInput ? nivelInput.value : 50;
+    
+    textarea.value = "⏳ Conectando con el Motor Vórtice Local...\n📡 Desencriptando Equipo Activo...\n";
+
+    const formData = new FormData();
+    formData.append("archivoSave", file);
+
+    try {
+        const respuesta = await fetch("https://motor-vortice-api.onrender.com/extraer-equipo", {
+            method: "POST",
+            body: formData
         });
+
+        if (!respuesta.ok) throw new Error("El motor rechazó el archivo.");
+
+        const textoCrudo = await respuesta.text();
+        
+        if (textoCrudo.trim() === "") {
+            textarea.value = "⚠️ El motor leyó el archivo pero no encontró un equipo válido.";
+            return;
+        }
+
+        // Limpieza y formato estricto Showdown
+        let textoLimpio = textoCrudo.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/(^"|"$)/g, '');
+        let pkmBlocks = textoLimpio.split(/\n\s*\n/);
+        let textoFormateado = "";
+
+        for (let block of pkmBlocks) {
+            if (block.trim() === "") continue;
+            let lineas = block.split('\n');
+
+            let nombreObj = lineas[0].trim();
+            let ataques = [];
+            let naturaleza = "";
+            let habilidad = "";
+            let shiny = "";
+            let otros = [];
+
+            for (let i = 1; i < lineas.length; i++) {
+                let linea = lineas[i].trim();
+                if (linea.startsWith("Friendship:") || linea.startsWith("EVs:") || linea.startsWith("IVs:") || linea.startsWith("Level:")) continue; 
+                
+                if (linea.startsWith("- ")) ataques.push(linea);
+                else if (linea.includes(" Nature")) naturaleza = linea;
+                else if (linea.startsWith("Ability:")) habilidad = linea;
+                else if (linea.startsWith("Shiny:")) shiny = linea;
+                else if (linea !== "") otros.push(linea);
+            }
+
+            textoFormateado += nombreObj + "\n";
+            if (shiny) textoFormateado += shiny + "\n";
+            if (habilidad) textoFormateado += habilidad + "\n";
+            textoFormateado += `Level: ${nivelDeseado}\n`;
+            textoFormateado += "EVs: 1 HP / 1 Atk / 1 Def / 1 SpA / 1 SpD / 1 Spe\n";
+            textoFormateado += "IVs: 31 HP / 31 Atk / 31 Def / 31 SpA / 31 SpD / 31 Spe\n";
+            if (naturaleza) textoFormateado += naturaleza + "\n";
+            
+            for (let extra of otros) textoFormateado += extra + "\n";
+            for (let ataque of ataques) textoFormateado += ataque + "\n";
+            
+            textoFormateado += "\n";
+        }
+
+        textarea.value = textoFormateado.trim();
+
+    } catch (error) {
+        console.error(error);
+        textarea.value = "❌ Error de conexión: " + error.message + "\n\n¿Está encendida la consola negra con 'dotnet run'?";
+    }
+}
+
+// 6. Copiar y Enviar a Pokepaste por formulario fantasma
+async function copiarShowdown() {
+    const textarea = document.getElementById('textarea-showdown-final');
+    const textoEquipo = textarea.value.trim();
+
+    if (textoEquipo === "" || textoEquipo.includes("⏳") || textoEquipo.includes("❌") || textoEquipo.includes("⚠️")) {
+        alert("❌ Espera a tener un equipo válido antes de exportar.");
+        return;
+    }
+
+    navigator.clipboard.writeText(textoEquipo);
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'https://pokepast.es/create';
+    form.target = '_blank';
+
+    const datos = {
+        'title': 'Equipo de Torneo - Sector Vórtice',
+        'author': 'Entrenador PKHeX',
+        'notes': 'Extraído automáticamente con Lector Binario',
+        'paste': textoEquipo
+    };
+
+    for (const clave in datos) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = clave;
+        input.value = datos[clave];
+        form.appendChild(input);
+    }
+
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+}
     </script>
 </body>
 </html>
